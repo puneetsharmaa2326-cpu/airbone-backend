@@ -7,13 +7,18 @@ using Microsoft.IdentityModel.Tokens;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// =====================================
+// CONTROLLERS
+// =====================================
+
 builder.Services.AddControllers();
 
 // =====================================
 // JWT CONFIGURATION
 // =====================================
 
-var configuredJwtSecret = builder.Configuration["Jwt:Secret"] ?? string.Empty;
+var configuredJwtSecret =
+    builder.Configuration["Jwt:Secret"] ?? string.Empty;
 
 var jwtSecret = Encoding.UTF8.GetByteCount(configuredJwtSecret) >= 32
     ? configuredJwtSecret
@@ -27,10 +32,12 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         options.TokenValidationParameters = new TokenValidationParameters
         {
             ValidateIssuer = true,
-            ValidIssuer = builder.Configuration["Jwt:Issuer"] ?? "AirborneAviationApi",
+            ValidIssuer = builder.Configuration["Jwt:Issuer"]
+                ?? "AirborneAviationApi",
 
             ValidateAudience = true,
-            ValidAudience = builder.Configuration["Jwt:Audience"] ?? "AirborneAviationClient",
+            ValidAudience = builder.Configuration["Jwt:Audience"]
+                ?? "AirborneAviationClient",
 
             ValidateIssuerSigningKey = true,
             IssuerSigningKey = new SymmetricSecurityKey(
@@ -54,7 +61,8 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
                 if (string.IsNullOrWhiteSpace(jti) ||
                     string.IsNullOrWhiteSpace(connectionString))
                 {
-                    context.Fail("Token validation could not be completed.");
+                    context.Fail(
+                        "Token validation could not be completed.");
                     return;
                 }
 
@@ -102,13 +110,18 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
                 }
                 catch (SqlException)
                 {
-                    context.Fail("Token validation service is unavailable.");
+                    context.Fail(
+                        "Token validation service is unavailable.");
                 }
             }
         };
     });
 
 builder.Services.AddAuthorization();
+
+// =====================================
+// SWAGGER
+// =====================================
 
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
@@ -123,11 +136,11 @@ builder.Services.AddCors(options =>
     {
         policy
             .WithOrigins(
-                 // New Netlify website
+                // Current Netlify frontend
+                "https://airborne-frontend.netlify.app",
 
-                 "https://airborne-frontend.netlify.app",
-                
-                // Existing Netlify website
+                // Other Netlify websites
+                "https://marvelous-bienenstitch-ef5ebc.netlify.app",
                 "https://airborne-aviation-web.netlify.app",
 
                 // Local frontend development
@@ -145,29 +158,6 @@ builder.Services.AddCors(options =>
     });
 });
 
-
-builder.Services.AddCors(options =>
-{
-    options.AddPolicy("AirborneFrontend", policy =>
-    {
-        policy
-            .WithOrigins(
-               
-                "https://marvelous-bienenstitch-ef5ebc.netlify.app",
-                "https://airborne-aviation-web.netlify.app",
-
-                "http://localhost:5500",
-                "http://127.0.0.1:5500",
-                "http://localhost:5501",
-                "http://127.0.0.1:5501",
-                "http://localhost:5502",
-                "http://127.0.0.1:5502"
-            )
-            .AllowAnyHeader()
-            .AllowAnyMethod();
-    });
-});
-
 // =====================================
 // BUILD APPLICATION
 // =====================================
@@ -175,7 +165,7 @@ builder.Services.AddCors(options =>
 var app = builder.Build();
 
 // =====================================
-// MIDDLEWARE CONFIGURATION
+// MIDDLEWARE
 // =====================================
 
 app.UseSwagger();
@@ -188,7 +178,7 @@ app.UseStaticFiles();
 
 app.UseRouting();
 
-// CORS must execute before Authentication
+// CORS before Authentication and Authorization
 app.UseCors("AirborneFrontend");
 
 app.UseAuthentication();
