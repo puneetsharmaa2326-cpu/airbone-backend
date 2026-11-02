@@ -9,7 +9,10 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddControllers();
 
-// JWT Configuration
+// =====================================
+// JWT CONFIGURATION
+// =====================================
+
 var configuredJwtSecret = builder.Configuration["Jwt:Secret"] ?? string.Empty;
 
 var jwtSecret = Encoding.UTF8.GetByteCount(configuredJwtSecret) >= 32
@@ -110,18 +113,29 @@ builder.Services.AddAuthorization();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
-// CORS Configuration
+// =====================================
+// CORS CONFIGURATION
+// =====================================
+
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AirborneFrontend", policy =>
     {
         policy
             .WithOrigins(
+                // New Netlify website
+                "https://marvelous-bienenstitch-ef5ebc.netlify.app",
+
+                // Existing Netlify website
                 "https://airborne-aviation-web.netlify.app",
+
+                // Local frontend development
                 "http://localhost:5500",
                 "http://127.0.0.1:5500",
+
                 "http://localhost:5501",
                 "http://127.0.0.1:5501",
+
                 "http://localhost:5502",
                 "http://127.0.0.1:5502"
             )
@@ -130,9 +144,16 @@ builder.Services.AddCors(options =>
     });
 });
 
+// =====================================
+// BUILD APPLICATION
+// =====================================
+
 var app = builder.Build();
 
-// Middleware
+// =====================================
+// MIDDLEWARE CONFIGURATION
+// =====================================
+
 app.UseSwagger();
 app.UseSwaggerUI();
 
@@ -143,14 +164,21 @@ app.UseStaticFiles();
 
 app.UseRouting();
 
-// CORS must be before Authentication and Authorization
+// CORS must execute before Authentication
 app.UseCors("AirborneFrontend");
 
 app.UseAuthentication();
 app.UseAuthorization();
 
+// =====================================
+// API CONTROLLERS
+// =====================================
+
 app.MapControllers();
 
+// =====================================
+// ROOT API
+// =====================================
 
 app.MapGet("/", () => Results.Ok(new
 {
@@ -159,6 +187,5 @@ app.MapGet("/", () => Results.Ok(new
     status = "Live",
     documentation = "/swagger/index.html"
 }));
-
 
 app.Run();
