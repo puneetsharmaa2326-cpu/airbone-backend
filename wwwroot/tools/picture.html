@@ -1,0 +1,444 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Airborne Aviation</title>
+
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            font-family: Arial, sans-serif;
+            color: white;
+        }
+
+        .navbar {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            min-height: 85px;
+            padding: 15px 5%;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 20px;
+            z-index: 5;
+            background: rgba(20, 30, 35, 0.35);
+        }
+
+        .logo {
+            background: white;
+            color: #102b43;
+            padding: 9px 15px;
+            border-radius: 8px;
+            text-align: center;
+            min-width: 100px;
+        }
+
+        .logo span {
+            font-weight: bold;
+            font-size: 20px;
+        }
+
+        .logo small {
+            display: block;
+            color: #d92332;
+            font-weight: bold;
+            letter-spacing: 2px;
+        }
+
+        nav {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 22px;
+            flex-wrap: wrap;
+        }
+
+        nav a {
+            color: white;
+            text-decoration: none;
+            font-size: 13px;
+            font-weight: 600;
+        }
+
+        nav a:hover,
+        nav a.active {
+            color: #ff3545;
+        }
+
+        .hero {
+            min-height: 100vh;
+            position: relative;
+            display: flex;
+            align-items: center;
+            background-color: #69766b;
+            background-image: none;
+            background-position: center;
+            background-size: cover;
+            background-repeat: no-repeat;
+            transition: background-image 0.4s ease-in-out;
+        }
+
+        .overlay {
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(
+                90deg,
+                rgba(0, 0, 0, 0.58),
+                rgba(0, 0, 0, 0.12)
+            );
+        }
+
+        .hero-content {
+            position: relative;
+            z-index: 2;
+            width: 100%;
+            padding: 150px 8% 70px;
+        }
+
+        .company {
+            display: inline-block;
+            background: rgba(255, 255, 255, 0.2);
+            padding: 10px 15px;
+            border-radius: 30px;
+            font-size: 13px;
+        }
+
+        h1 {
+            margin: 20px 0 0;
+            font-size: clamp(36px, 5vw, 60px);
+            letter-spacing: -2px;
+        }
+
+        h1::first-letter {
+            color: #ff3545;
+        }
+
+        h2 {
+            margin-top: 5px;
+            font-size: clamp(25px, 3vw, 36px);
+        }
+
+        .services {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin: 25px 0 18px;
+        }
+
+        .services span {
+            background: rgba(255, 255, 255, 0.17);
+            border: 1px solid rgba(255, 255, 255, 0.35);
+            padding: 12px;
+            border-radius: 5px;
+            font-size: 13px;
+            font-weight: bold;
+        }
+
+        .buttons {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .buttons a {
+            display: inline-block;
+            padding: 14px 20px;
+            text-decoration: none;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: bold;
+        }
+
+        .primary-btn {
+            color: white;
+            background: #ed2639;
+        }
+
+        .secondary-btn {
+            background: white;
+            color: #26374a;
+        }
+
+        .social-links {
+            position: absolute;
+            left: 20px;
+            top: 48%;
+            z-index: 3;
+            display: grid;
+            gap: 10px;
+        }
+
+        .social-links a {
+            width: 34px;
+            height: 34px;
+            display: grid;
+            place-items: center;
+            color: white;
+            text-decoration: none;
+            border: 1px solid rgba(255,255,255,.6);
+            border-radius: 50%;
+        }
+
+        .floating-buttons {
+            position: fixed;
+            bottom: 30px;
+            right: 25px;
+            z-index: 10;
+            display: grid;
+            gap: 10px;
+        }
+
+        .floating-buttons a {
+            width: 43px;
+            height: 43px;
+            display: grid;
+            place-items: center;
+            border-radius: 50%;
+            background: #08b85c;
+            color: white;
+            font-size: 24px;
+            text-decoration: none;
+        }
+
+        .floating-buttons a + a {
+            background: #168bd0;
+        }
+
+        #apiStatus {
+            position: fixed;
+            bottom: 10px;
+            left: 10px;
+            z-index: 20;
+            padding: 7px 12px;
+            border-radius: 5px;
+            background: rgba(0, 0, 0, 0.65);
+            color: white;
+            font-size: 12px;
+        }
+
+        @media (max-width: 900px) {
+            .navbar {
+                align-items: flex-start;
+                flex-direction: column;
+            }
+
+            nav {
+                justify-content: flex-start;
+                gap: 14px;
+            }
+
+            .hero-content {
+                padding-top: 210px;
+            }
+
+            .social-links {
+                display: none;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .hero-content {
+                padding-left: 5%;
+                padding-right: 5%;
+            }
+
+            .buttons a {
+                width: 100%;
+                text-align: center;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <header class="navbar">
+        <div class="logo">
+            <span>✈ ARST</span>
+            <small>AIRBORNE</small>
+        </div>
+
+        <nav>
+            <a href="#" class="active">Home</a>
+            <a href="#about">About Us</a>
+            <a href="#faqs">FAQs</a>
+            <a href="#services">Services</a>
+            <a href="#packages">Yatra Packages</a>
+            <a href="#gallery">Gallery</a>
+            <a href="#contact">Contact</a>
+        </nav>
+    </header>
+
+    <main id="hero" class="hero">
+        <div class="overlay"></div>
+
+        <div class="hero-content">
+            <span id="companyName" class="company">
+                Airborne Aviation Academy Pvt Ltd
+            </span>
+
+            <h1 id="heading">Helicopter &amp; Charter</h1>
+
+            <h2 id="subHeading">Services Across India</h2>
+
+            <div class="services" id="services">
+                <span>🔴 Char Dham Yatra</span>
+                <span>🔵 Private Charters</span>
+                <span>🔴 Air Ambulance Jets</span>
+                <span>🔵 Joyrides &amp; Picnics</span>
+            </div>
+
+            <div class="buttons">
+                <a href="#contact" id="enquiryBtn" class="primary-btn">
+                    SEND ENQUIRY →
+                </a>
+
+                <a href="#packages" class="secondary-btn">
+                    HELICOPTER CHAR DHAM PACKAGES
+                </a>
+            </div>
+        </div>
+
+        <div class="social-links">
+            <a href="#facebook">f</a>
+            <a href="#instagram">◎</a>
+            <a href="#youtube">▶</a>
+            <a href="#linkedin">in</a>
+        </div>
+
+        <div class="floating-buttons">
+            <a href="https://wa.me/" target="_blank"
+               rel="noopener" title="WhatsApp">☏</a>
+
+            <a href="tel:+910000000000" title="Call">☎</a>
+        </div>
+    </main>
+
+    <div id="apiStatus">Loading banner from API...</div>
+
+    <script>
+        // ASP.NET Core API ka URL
+        const API_URL = "https://localhost:7049/api/Banner";
+
+        let bannerImages = [];
+        let currentImageIndex = 0;
+        let sliderTimer = null;
+
+        async function loadBanner() {
+            const status = document.getElementById("apiStatus");
+
+            try {
+                status.textContent = "Loading banner from API...";
+
+                const response = await fetch(API_URL);
+
+                if (!response.ok) {
+                    throw new Error(
+                        "API error: HTTP " + response.status
+                    );
+                }
+
+                const data = await response.json();
+
+                console.log("Banner API response:", data);
+
+                // API se text set karna
+                document.getElementById("companyName").textContent =
+                    data.companyName ?? data.CompanyName ?? "";
+
+                document.getElementById("heading").textContent =
+                    data.heading ?? data.Heading ?? "";
+
+                document.getElementById("subHeading").textContent =
+                    data.subHeading ?? data.SubHeading ?? "";
+
+                // API ke images array ko read karna
+                bannerImages = data.images ?? data.Images ?? [];
+
+                if (!Array.isArray(bannerImages) ||
+                    bannerImages.length === 0) {
+                    throw new Error(
+                        "API response mein images array nahi hai."
+                    );
+                }
+
+                // Saari images ko load karke verify karna
+                const loadedImages = await Promise.all(
+                    bannerImages.map(url => {
+                        return new Promise(resolve => {
+                            const img = new Image();
+
+                            img.onload = () => resolve(url);
+                            img.onerror = () => {
+                                console.error("Image load failed:", url);
+                                resolve(null);
+                            };
+
+                            img.src = url;
+                        });
+                    })
+                );
+
+                bannerImages = loadedImages.filter(url => url !== null);
+
+                if (bannerImages.length === 0) {
+                    throw new Error(
+                        "Koi image load nahi hui. Image filenames aur URLs check karo."
+                    );
+                }
+
+                currentImageIndex = 0;
+                showImage(currentImageIndex);
+
+                if (sliderTimer !== null) {
+                    clearInterval(sliderTimer);
+                }
+
+                // Har 5 second mein agali image
+                sliderTimer = setInterval(() => {
+                    currentImageIndex =
+                        (currentImageIndex + 1) % bannerImages.length;
+
+                    showImage(currentImageIndex);
+                }, 5000);
+
+                status.textContent =
+                    "API connected | " + bannerImages.length + " images loaded";
+
+            } catch (error) {
+                console.error("Banner loading error:", error);
+
+                status.textContent =
+                    "API/Image error: " + error.message;
+            }
+        }
+
+        function showImage(index) {
+            const hero = document.getElementById("hero");
+            const imageUrl = bannerImages[index];
+
+            if (!imageUrl) {
+                return;
+            }
+
+            hero.style.backgroundImage =
+                `url("${imageUrl}")`;
+
+            console.log("Showing image:", imageUrl);
+        }
+
+        // Page load hote hi API call
+        document.addEventListener("DOMContentLoaded", loadBanner);
+    </script>
+
+</body>
+</html>

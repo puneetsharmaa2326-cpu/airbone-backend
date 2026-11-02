@@ -1,0 +1,965 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Enquiry Form - Airborne</title>
+
+    <style>
+        * { box-sizing: border-box; }
+
+        body {
+            margin: 0;
+            font-family: Arial, sans-serif;
+            background: #f4f1f8;
+            color: #241c2d;
+        }
+
+        .page-header {
+            min-height: 66px;
+            padding: 15px 22px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+
+        .page-header h2 {
+            margin: 0;
+            font-size: 20px;
+            color: #442066;
+        }
+
+        .header-actions { display: flex; gap: 8px; }
+
+        button, a, input, select, textarea {
+            font-family: Arial, sans-serif;
+        }
+
+        .top-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 5px;
+            padding: 10px 16px;
+            border: none;
+            border-radius: 6px;
+            color: white;
+            font-size: 12px;
+            font-weight: bold;
+            text-decoration: none;
+            cursor: pointer;
+        }
+
+        .add-btn { background: #48216c; }
+        .excel-btn { background: #197344; }
+        .top-btn:hover { opacity: .88; }
+
+        .content-card {
+            margin: 0 20px 25px;
+            padding: 16px;
+            background: #fff;
+            border-radius: 11px;
+            box-shadow: 0 3px 12px #241c2d0d;
+        }
+
+        .table-toolbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            flex-wrap: wrap;
+            margin-bottom: 21px;
+        }
+
+        #searchInput {
+            width: 220px;
+            max-width: 100%;
+            padding: 9px 12px;
+            border: 1px solid #d0ccd4;
+            border-radius: 7px;
+            outline: none;
+            font-size: 12px;
+        }
+
+        #searchInput:focus { border-color: #48216c; }
+        #recordCount { font-size: 12px; color: #655b6c; }
+
+        .table-container { width: 100%; overflow-x: auto; }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            min-width: 1150px;
+        }
+
+        thead { background: #f6f3fa; }
+
+        th {
+            color: #40205f;
+            font-size: 13px;
+            font-weight: bold;
+            white-space: nowrap;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        th, td {
+            padding: 13px 11px;
+            border-bottom: 1px solid #ece9ee;
+            text-align: left;
+            vertical-align: middle;
+        }
+
+        td {
+            font-size: 13px;
+            color: #17131b;
+            overflow-wrap: anywhere;
+        }
+
+        tbody tr:hover { background: #faf8fc; }
+
+        .actions {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .action-btn {
+            width: 35px;
+            height: 29px;
+            display: inline-flex;
+            justify-content: center;
+            align-items: center;
+            border: none;
+            border-radius: 6px;
+            color: white;
+            cursor: pointer;
+            font-size: 15px;
+            margin: 0;
+        }
+
+        .edit-btn { background: #48216c; }
+        .delete-btn { background: #e9364b; }
+        .action-btn:hover { opacity: .8; }
+
+        #message {
+            margin: 0 0 12px;
+            font-size: 13px;
+            color: #655b6c;
+        }
+
+        .pagination {
+            display: flex;
+            gap: 5px;
+            margin-top: 10px;
+            flex-wrap: wrap;
+        }
+
+        .page-btn {
+            min-width: 32px;
+            height: 28px;
+            padding: 0 9px;
+            border: 1px solid #e6e0eb;
+            border-radius: 5px;
+            background: white;
+            color: #48216c;
+            cursor: pointer;
+            margin: 0;
+        }
+
+        .page-btn.active {
+            background: #48216c;
+            color: white;
+            border-color: #48216c;
+        }
+
+        .page-btn:disabled { opacity: .45; cursor: not-allowed; }
+
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            inset: 0;
+            padding: 20px 12px;
+            background: rgba(20, 12, 30, .55);
+            overflow-y: auto;
+        }
+
+        .modal-content {
+            background: white;
+            max-width: 720px;
+            width: 100%;
+            margin: 20px auto;
+            padding: 22px;
+            border-radius: 10px;
+            box-shadow: 0 8px 30px #0002;
+        }
+
+        .modal-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 20px;
+        }
+
+        .modal-header h2 {
+            margin: 0;
+            font-size: 21px;
+            color: #48216c;
+        }
+
+        .close-btn {
+            background: transparent;
+            color: #555;
+            font-size: 28px;
+            padding: 0 6px;
+            border: none;
+            cursor: pointer;
+            margin: 0;
+        }
+
+        .edit-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+        }
+
+        .edit-grid label {
+            display: block;
+            font-size: 13px;
+            font-weight: bold;
+            margin-bottom: 6px;
+        }
+
+        .edit-grid input,
+        .edit-grid select,
+        .edit-grid textarea {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #d9d3df;
+            border-radius: 5px;
+            font-size: 13px;
+            outline: none;
+        }
+
+        .edit-grid input:focus,
+        .edit-grid select:focus,
+        .edit-grid textarea:focus {
+            border-color: #48216c;
+        }
+
+        .edit-full-width { grid-column: 1 / -1; }
+
+        .modal-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+            margin-top: 20px;
+        }
+
+        .modal-actions button {
+            margin: 0;
+            padding: 10px 16px;
+            border: none;
+            border-radius: 5px;
+            color: white;
+            cursor: pointer;
+        }
+
+        .cancel-btn { background: #777; }
+        .save-btn { background: #48216c; }
+        .save-btn:disabled { opacity: .6; cursor: not-allowed; }
+
+        #addMessage { margin-top: 12px; font-size: 13px; }
+
+        @media (max-width: 600px) {
+            .page-header { padding: 14px; }
+            .content-card { margin: 0 10px 15px; padding: 12px; }
+            .page-header h2 { font-size: 18px; }
+            #searchInput { width: 100%; }
+            .table-toolbar { align-items: stretch; }
+            .edit-grid { grid-template-columns: 1fr; }
+            .edit-full-width { grid-column: auto; }
+        }
+    </style>
+</head>
+
+<body>
+    <header class="page-header">
+        <h2>Enquiry Form</h2>
+
+        <div class="header-actions">
+            <button type="button" class="top-btn add-btn"
+                    onclick="openAddModal()">+ Add New</button>
+
+            <button type="button" class="top-btn excel-btn"
+                    onclick="exportExcel()">▧ Excel</button>
+        </div>
+    </header>
+
+    <main class="content-card">
+        <div class="table-toolbar">
+            <input type="text" id="searchInput"
+                   placeholder="Search..."
+                   oninput="searchEnquiries()">
+
+            <span id="recordCount">Showing 0 of 0</span>
+        </div>
+
+        <div id="message">Loading enquiries...</div>
+
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th onclick="sortEnquiries('enquiryId')">Sr.No. ↕</th>
+                        <th onclick="sortEnquiries('fullName')">Full Name ↕</th>
+                        <th onclick="sortEnquiries('mobile')">Mobile ↕</th>
+                        <th>Email</th>
+                        <th onclick="sortEnquiries('service')">Service ↕</th>
+                        <th>From</th>
+                        <th>To</th>
+                        <th>Travel Date</th>
+                        <th>Passengers</th>
+                        <th>Trip Details</th>
+                        <th>Created Date</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="enquiryTableBody"></tbody>
+            </table>
+        </div>
+
+        <div class="pagination" id="pagination"></div>
+    </main>
+
+    <!-- Add / Update Modal -->
+    <div id="addModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="addModalTitle">Add New Enquiry</h2>
+
+                <button type="button" class="close-btn"
+                        onclick="closeAddModal()">×</button>
+            </div>
+
+            <form id="addForm">
+                <div class="edit-grid">
+                    <div>
+                        <label for="addFullName">Full Name *</label>
+                        <input type="text" id="addFullName"
+                               maxlength="150" required>
+                    </div>
+
+                    <div>
+                        <label for="addMobile">Mobile *</label>
+                        <input type="tel" id="addMobile"
+                               maxlength="10" pattern="[0-9]{10}" required>
+                    </div>
+
+                    <div>
+                        <label for="addEmail">Email</label>
+                        <input type="email" id="addEmail">
+                    </div>
+
+                    <div>
+                        <label for="addService">Service *</label>
+                       
+                        <select type="text" id="addService" required name="service" required>
+                            <option value="" disabled selected>
+                                Select service *
+                            </option>
+                            <option>Holy Travels</option>
+                            <option>Air Charter Service</option>
+                            <option>Air Ambulance</option>
+                            <option>Aero Sports &amp; Adventure</option>
+                            <option>Helipads &amp; Ground Handling</option>
+                            <option>Wedding &amp; Events</option>
+                            <option>Do Dham Same Day Return</option>
+                            <option>Do Dham Yatra - 3 Nights / 4 Days</option>
+                            <option>Char Dham Yatra - 5 Nights / 6 Days</option>
+                            <option>Hot Air Balloon</option>
+                            <option>Helicopter Joyride</option>
+                            <option>Flying Club Visit</option>
+                            <option>Other</option>
+                        </select>
+
+
+
+
+                    </div>
+
+                    <div>
+                        <label for="addFrom">From</label>
+                        <input type="text" id="addFrom">
+                    </div>
+
+                    <div>
+                        <label for="addTo">To</label>
+                        <input type="text" id="addTo">
+                    </div>
+
+                    <div>
+                        <label for="addTravelDate">Travel Date</label>
+                        <input type="date" id="addTravelDate">
+                    </div>
+
+                    <div>
+                        <label for="addPassengers">Passengers</label>
+                        <input type="text" id="addPassengers"
+                               placeholder="e.g. 2 Adults, 1 Child">
+                    </div>
+
+                    <div class="edit-full-width">
+                        <label for="addTripDetails">Trip Details</label>
+                        <textarea id="addTripDetails" rows="4"></textarea>
+                    </div>
+                </div>
+
+                <div class="modal-actions">
+                    <button type="button" class="cancel-btn"
+                            onclick="closeAddModal()">Cancel</button>
+
+                    <button type="submit" class="save-btn" id="saveButton">
+                        Save Enquiry
+                    </button>
+                </div>
+
+                <div id="addMessage" role="status"></div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        // Apne actual running API URL se match karein.
+        const API_URL = "https://localhost:7049/api/Enquiry";
+
+        let allEnquiries = [];
+        let filteredEnquiries = [];
+        let currentPage = 1;
+        const pageSize = 9;
+        let sortColumn = "enquiryId";
+        let sortAscending = false;
+        let editingEnquiryId = null;
+
+        // GET: Database se enquiries load karna
+        async function loadEnquiries() {
+            const message = document.getElementById("message");
+            const tableBody = document.getElementById("enquiryTableBody");
+
+            message.textContent = "Loading data...";
+            tableBody.innerHTML = "";
+
+            try {
+                const response = await fetch(API_URL, {
+                    method: "GET",
+                    headers: { "Accept": "application/json" }
+                });
+
+                if (!response.ok) {
+                    throw new Error("HTTP Status: " + response.status);
+                }
+
+                const records = await response.json();
+
+                if (!Array.isArray(records)) {
+                    throw new Error("GET API ne list return nahi ki.");
+                }
+
+                allEnquiries = records;
+                message.textContent = "";
+                searchEnquiries();
+
+            } catch (error) {
+                console.error("GET API Error:", error);
+                message.textContent =
+                    "Data load nahi hua: " + error.message +
+                    ". API URL, HTTPS aur CORS check karein.";
+
+                document.getElementById("recordCount").textContent =
+                    "Showing 0 of 0";
+
+                tableBody.innerHTML = "";
+                document.getElementById("pagination").innerHTML = "";
+            }
+        }
+
+        // Add modal open karna
+        function openAddModal() {
+            editingEnquiryId = null;
+
+            document.getElementById("addForm").reset();
+            document.getElementById("addModalTitle").textContent =
+                "Add New Enquiry";
+
+            document.getElementById("saveButton").textContent =
+                "Save Enquiry";
+
+            document.getElementById("saveButton").disabled = false;
+            document.getElementById("addMessage").textContent = "";
+            document.getElementById("addModal").style.display = "block";
+            document.getElementById("addFullName").focus();
+        }
+
+        // Update modal ko existing data se fill karna
+        function openEditModal(item) {
+            editingEnquiryId = item.enquiryId;
+
+            document.getElementById("addForm").reset();
+
+            document.getElementById("addFullName").value =
+                item.fullName || "";
+
+            document.getElementById("addMobile").value =
+                item.mobile || "";
+
+            document.getElementById("addEmail").value =
+                item.email || "";
+
+            document.getElementById("addService").value =
+                item.service || "";
+
+            document.getElementById("addFrom").value =
+                item.fromLocation || "";
+
+            document.getElementById("addTo").value =
+                item.toLocation || "";
+
+            document.getElementById("addTravelDate").value =
+                item.travelDate
+                    ? String(item.travelDate).substring(0, 10)
+                    : "";
+
+            document.getElementById("addPassengers").value =
+                item.passengers || "";
+
+            document.getElementById("addTripDetails").value =
+                item.tripDetails || "";
+
+            document.getElementById("addModalTitle").textContent =
+                "Update Enquiry";
+
+            document.getElementById("saveButton").textContent =
+                "Update Enquiry";
+
+            document.getElementById("saveButton").disabled = false;
+            document.getElementById("addMessage").textContent = "";
+            document.getElementById("addModal").style.display = "block";
+            document.getElementById("addFullName").focus();
+        }
+
+        function closeAddModal() {
+            document.getElementById("addModal").style.display = "none";
+        }
+
+        // POST: Add aur PUT: Update
+        document.getElementById("addForm").addEventListener(
+            "submit",
+            async function (event) {
+                event.preventDefault();
+
+                const saveButton = document.getElementById("saveButton");
+                const addMessage = document.getElementById("addMessage");
+
+                const data = {
+                    fullName: document.getElementById("addFullName").value.trim(),
+                    mobile: document.getElementById("addMobile").value.trim(),
+                    email: document.getElementById("addEmail").value.trim() || null,
+                    service: document.getElementById("addService").value.trim(),
+                    fromLocation: document.getElementById("addFrom").value.trim() || null,
+                    toLocation: document.getElementById("addTo").value.trim() || null,
+                    travelDate: document.getElementById("addTravelDate").value || null,
+                    passengers: document.getElementById("addPassengers").value.trim() || null,
+                    tripDetails: document.getElementById("addTripDetails").value.trim() || null
+                };
+
+                const isEdit = editingEnquiryId !== null;
+
+                const requestUrl = isEdit
+                    ? `${API_URL}/${editingEnquiryId}`
+                    : API_URL;
+
+                const requestMethod = isEdit ? "PUT" : "POST";
+
+                try {
+                    saveButton.disabled = true;
+                    saveButton.textContent = isEdit ? "Updating..." : "Saving...";
+                    addMessage.style.color = "#655b6c";
+                    addMessage.textContent = isEdit
+                        ? "Updating enquiry..."
+                        : "Creating new enquiry...";
+
+                    const response = await fetch(requestUrl, {
+                        method: requestMethod,
+                        headers: {
+                            "Content-Type": "application/json",
+                            "Accept": "application/json"
+                        },
+                        body: JSON.stringify(data)
+                    });
+
+                    const responseText = await response.text();
+                    let result = {};
+
+                    if (responseText) {
+                        try {
+                            result = JSON.parse(responseText);
+                        } catch {
+                            result = { message: responseText };
+                        }
+                    }
+
+                    if (!response.ok) {
+                        throw new Error(
+                            result.message ||
+                            result.title ||
+                            "HTTP Status: " + response.status
+                        );
+                    }
+
+                    alert(
+                        result.message ||
+                        (isEdit
+                            ? "Enquiry updated successfully!"
+                            : "Enquiry created successfully!")
+                    );
+
+                    await loadEnquiries();
+                    closeAddModal();
+                    document.getElementById("addForm").reset();
+                    editingEnquiryId = null;
+
+                } catch (error) {
+                    console.error("Save/Update API Error:", error);
+                    addMessage.style.color = "red";
+                    addMessage.textContent = "Error: " + error.message;
+
+                } finally {
+                    saveButton.disabled = false;
+                    saveButton.textContent =
+                        editingEnquiryId !== null
+                            ? "Update Enquiry"
+                            : "Save Enquiry";
+                }
+            }
+        );
+
+        // Search
+        function searchEnquiries() {
+            const searchText = document.getElementById("searchInput")
+                .value.toLowerCase().trim();
+
+            filteredEnquiries = allEnquiries.filter(function (item) {
+                return [
+                    item.enquiryId,
+                    item.fullName,
+                    item.mobile,
+                    item.email,
+                    item.service,
+                    item.fromLocation,
+                    item.toLocation,
+                    item.travelDate,
+                    item.passengers,
+                    item.tripDetails,
+                    item.createdDate
+                ].some(function (value) {
+                    return String(value ?? "")
+                        .toLowerCase()
+                        .includes(searchText);
+                });
+            });
+
+            currentPage = 1;
+            renderTable();
+        }
+
+        // Sorting
+        function sortEnquiries(column) {
+            if (sortColumn === column) {
+                sortAscending = !sortAscending;
+            } else {
+                sortColumn = column;
+                sortAscending = true;
+            }
+
+            filteredEnquiries.sort(function (a, b) {
+                const valueA = a[column] ?? "";
+                const valueB = b[column] ?? "";
+
+                if (column === "enquiryId") {
+                    return sortAscending
+                        ? Number(valueA) - Number(valueB)
+                        : Number(valueB) - Number(valueA);
+                }
+
+                const comparison = String(valueA).localeCompare(String(valueB));
+
+                return sortAscending ? comparison : -comparison;
+            });
+
+            currentPage = 1;
+            renderTable();
+        }
+
+        // Table render
+        function renderTable() {
+            const tableBody = document.getElementById("enquiryTableBody");
+            const recordCount = document.getElementById("recordCount");
+
+            tableBody.innerHTML = "";
+
+            const totalRecords = filteredEnquiries.length;
+            const totalPages = Math.ceil(totalRecords / pageSize);
+
+            if (totalPages > 0 && currentPage > totalPages) {
+                currentPage = totalPages;
+            }
+
+            const startIndex = (currentPage - 1) * pageSize;
+            const pageRecords = filteredEnquiries.slice(
+                startIndex,
+                startIndex + pageSize
+            );
+
+            pageRecords.forEach(function (item, index) {
+                const row = document.createElement("tr");
+
+                const values = [
+                    startIndex + index + 1,
+                    item.fullName,
+                    item.mobile,
+                    item.email,
+                    item.service,
+                    item.fromLocation,
+                    item.toLocation,
+                    formatDate(item.travelDate),
+                    item.passengers,
+                    item.tripDetails,
+                    formatDate(item.createdDate)
+                ];
+
+                values.forEach(function (value) {
+                    const cell = document.createElement("td");
+                    cell.textContent =
+                        value === null || value === undefined || value === ""
+                            ? "-"
+                            : value;
+                    row.appendChild(cell);
+                });
+
+                const actionCell = document.createElement("td");
+                const actionDiv = document.createElement("div");
+                actionDiv.className = "actions";
+
+                // Update button
+                const editButton = document.createElement("button");
+                editButton.type = "button";
+                editButton.className = "action-btn edit-btn";
+                editButton.title = "Update Enquiry";
+                editButton.setAttribute("aria-label", "Update enquiry");
+                editButton.textContent = "✎";
+
+                editButton.addEventListener("click", function () {
+                    openEditModal(item);
+                });
+
+                actionDiv.appendChild(editButton);
+
+                // Delete button
+                const deleteButton = document.createElement("button");
+                deleteButton.type = "button";
+                deleteButton.className = "action-btn delete-btn";
+                deleteButton.title = "Delete Enquiry";
+                deleteButton.setAttribute("aria-label", "Delete enquiry");
+                deleteButton.textContent = "▣";
+
+                deleteButton.addEventListener("click", function () {
+                    deleteEnquiry(item.enquiryId);
+                });
+
+                actionDiv.appendChild(deleteButton);
+                actionCell.appendChild(actionDiv);
+                row.appendChild(actionCell);
+                tableBody.appendChild(row);
+            });
+
+            const firstRecord = totalRecords === 0 ? 0 : startIndex + 1;
+            const lastRecord = Math.min(startIndex + pageSize, totalRecords);
+
+            recordCount.textContent =
+                `Showing ${firstRecord}-${lastRecord} of ${totalRecords}`;
+
+            if (totalRecords === 0) {
+                const row = document.createElement("tr");
+                const cell = document.createElement("td");
+                cell.colSpan = 12;
+                cell.textContent = "No enquiries found.";
+                cell.style.textAlign = "center";
+                row.appendChild(cell);
+                tableBody.appendChild(row);
+            }
+
+            renderPagination(totalPages);
+        }
+
+        // Pagination
+        function renderPagination(totalPages) {
+            const pagination = document.getElementById("pagination");
+            pagination.innerHTML = "";
+
+            function addPageButton(label, page, disabled, active) {
+                const button = document.createElement("button");
+                button.type = "button";
+                button.className = "page-btn" + (active ? " active" : "");
+                button.textContent = label;
+                button.disabled = disabled;
+
+                button.addEventListener("click", function () {
+                    currentPage = page;
+                    renderTable();
+                });
+
+                pagination.appendChild(button);
+            }
+
+            addPageButton("«", 1, currentPage === 1 || totalPages === 0, false);
+            addPageButton("‹", currentPage - 1, currentPage === 1 || totalPages === 0, false);
+
+            for (let page = 1; page <= totalPages; page++) {
+                addPageButton(page, page, false, page === currentPage);
+            }
+
+            addPageButton("›", currentPage + 1,
+                currentPage >= totalPages || totalPages === 0, false);
+
+            addPageButton("»", totalPages,
+                currentPage >= totalPages || totalPages === 0, false);
+        }
+
+        // Date format
+        function formatDate(value) {
+            if (!value) return "-";
+
+            const text = String(value);
+
+            if (/^\d{4}-\d{2}-\d{2}$/.test(text)) {
+                return text;
+            }
+
+            const date = new Date(value);
+
+            return isNaN(date.getTime())
+                ? text
+                : date.toLocaleString();
+        }
+
+        // DELETE
+        async function deleteEnquiry(id) {
+            if (!confirm("Kya aap is enquiry ko delete karna chahte hain?")) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_URL}/${id}`, {
+                    method: "DELETE",
+                    headers: { "Accept": "application/json" }
+                });
+
+                const responseText = await response.text();
+                let result = {};
+
+                if (responseText) {
+                    try {
+                        result = JSON.parse(responseText);
+                    } catch {
+                        result = { message: responseText };
+                    }
+                }
+
+                if (!response.ok) {
+                    throw new Error(
+                        result.message ||
+                        result.title ||
+                        "HTTP Status: " + response.status
+                    );
+                }
+
+                alert(result.message || "Enquiry deleted successfully.");
+                await loadEnquiries();
+
+            } catch (error) {
+                console.error("Delete API Error:", error);
+                alert("Delete error: " + error.message);
+            }
+        }
+
+        // Excel-compatible CSV export
+        function exportExcel() {
+            if (filteredEnquiries.length === 0) {
+                alert("Export karne ke liye koi record nahi hai.");
+                return;
+            }
+
+            const columns = [
+                ["Enquiry ID", "enquiryId"],
+                ["Full Name", "fullName"],
+                ["Mobile", "mobile"],
+                ["Email", "email"],
+                ["Service", "service"],
+                ["From", "fromLocation"],
+                ["To", "toLocation"],
+                ["Travel Date", "travelDate"],
+                ["Passengers", "passengers"],
+                ["Trip Details", "tripDetails"],
+                ["Created Date", "createdDate"]
+            ];
+
+            function escapeCsv(value) {
+                let text = String(value ?? "");
+
+                if (/^[\s]*[=+\-@]/.test(text)) {
+                    text = "'" + text;
+                }
+
+                return '"' + text.replace(/"/g, '""') + '"';
+            }
+
+            const rows = [
+                columns.map(column => escapeCsv(column[0])).join(","),
+                ...filteredEnquiries.map(item =>
+                    columns.map(column => escapeCsv(item[column[1]])).join(",")
+                )
+            ];
+
+            const blob = new Blob(
+                ["\uFEFF" + rows.join("\r\n")],
+                { type: "text/csv;charset=utf-8;" }
+            );
+
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement("a");
+
+            link.href = url;
+            link.download = "Airborne_Enquiries.csv";
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
+        }
+
+        // Modal ke bahar click karne par close
+        document.getElementById("addModal").addEventListener("click", function (event) {
+            if (event.target === this) {
+                closeAddModal();
+            }
+        });
+
+        // Page load par GET API call
+        loadEnquiries();
+    </script>
+</body>
+</html>

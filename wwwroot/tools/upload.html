@@ -1,0 +1,378 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Media Master Admin</title>
+
+    <style>
+        * { box-sizing: border-box; }
+
+        body {
+            margin: 0;
+            padding: 24px;
+            font-family: Cambria, serif;
+            background: #f3f6fb;
+            color: #263449;
+        }
+
+        .container {
+            max-width: 1100px;
+            margin: auto;
+        }
+
+        .panel {
+            background: white;
+            padding: 22px;
+            border-radius: 12px;
+            margin-bottom: 22px;
+            box-shadow: 0 3px 14px #0000000c;
+        }
+
+        h2 { color: #1677ff; }
+
+        label {
+            display: block;
+            margin: 12px 0 6px;
+            font-weight: bold;
+        }
+
+        input, select {
+            width: 100%;
+            padding: 11px;
+            border: 1px solid #d3d9e2;
+            border-radius: 6px;
+            font: inherit;
+        }
+
+        button {
+            border: 0;
+            padding: 9px 12px;
+            margin: 3px;
+            border-radius: 6px;
+            cursor: pointer;
+            font: inherit;
+        }
+
+        button:disabled { opacity: .6; cursor: wait; }
+
+        .primary { background: #1677ff; color: white; }
+        .activate { background: #d9f7e5; color: #087443; }
+        .deactivate { background: #fff0c2; color: #805b00; }
+        .delete { background: #ffe2e2; color: #a11c1c; }
+
+        .table-wrap { overflow-x: auto; }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            min-width: 650px;
+        }
+
+        th, td {
+            padding: 12px;
+            border-bottom: 1px solid #e5e9f0;
+            text-align: left;
+            vertical-align: middle;
+        }
+
+        th { background: #eaf0f7; }
+
+        .preview {
+            width: 110px;
+            height: 75px;
+            object-fit: contain;
+            background: #f5f6f8;
+        }
+
+        .status-active { color: #087443; font-weight: bold; }
+        .status-inactive { color: #b42318; font-weight: bold; }
+
+        #message { white-space: pre-wrap; }
+
+        @media (max-width: 600px) {
+            body { padding: 10px; }
+            .panel { padding: 12px; }
+        }
+    </style>
+</head>
+
+<body>
+<div class="container">
+
+    <h2>Media Master</h2>
+
+    <div class="panel">
+        <h3>Upload Image / Video</h3>
+
+        <form id="uploadForm">
+            <label for="mediaName">Media Name</label>
+            <input type="text" id="mediaName"
+                   maxlength="200" required>
+
+            <label for="mediaType">Media Type</label>
+            <select id="mediaType">
+                <option value="Image">Image</option>
+                <option value="Video">Video</option>
+            </select>
+
+            <label for="mediaFile">Select File</label>
+            <input type="file" id="mediaFile"
+            accept=".jpg,.jpeg,.jfif,.png,.webp,.gif,video/mp4,video/webm,video/quicktime"
+            required>
+
+            <p>Maximum file size: 50 MB</p>
+
+            <button class="primary" type="submit" id="uploadButton">
+                Upload Media
+            </button>
+        </form>
+
+        <p id="message" role="status"></p>
+    </div>
+
+    <div class="panel">
+        <h3>Uploaded Media List</h3>
+
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Preview</th>
+                        <th>Name</th>
+                        <th>Type</th>
+                        <th>Status</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+
+                <tbody id="mediaTable">
+                    <tr><td colspan="5">Loading...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script>
+    const api = "https://localhost:7049/api/Media";
+
+    const form = document.getElementById("uploadForm");
+    const fileInput = document.getElementById("mediaFile");
+    const nameInput = document.getElementById("mediaName");
+    const typeInput = document.getElementById("mediaType");
+    const table = document.getElementById("mediaTable");
+    const message = document.getElementById("message");
+    const uploadButton = document.getElementById("uploadButton");
+
+    function showMessage(text, error = false) {
+        message.textContent = text;
+        message.style.color = error ? "#b42318" : "#087443";
+    }
+
+    function safeUrl(value) {
+        try {
+            const url = new URL(value);
+            return ["https:", "http:"].includes(url.protocol)
+                ? url.href : null;
+        } catch {
+            return null;
+        }
+    }
+
+    // Upload file to API -> Cloudinary -> SQL Server
+    form.addEventListener("submit", async function (event) {
+        event.preventDefault();
+
+        const file = fileInput.files[0];
+        const name = nameInput.value.trim();
+        const type = typeInput.value;
+
+        if (!file || !name) {
+            showMessage("Name aur file select karein.", true);
+            return;
+        }
+
+        if (file.size > 50 * 1024 * 1024) {
+            showMessage("File 50 MB se badi nahi honi chahiye.", true);
+            return;
+        }
+
+        if (type === "Image" && !file.type.startsWith("image/")) {
+            showMessage("Image file select karein.", true);
+            return;
+        }
+
+        if (type === "Video" && !file.type.startsWith("video/")) {
+            showMessage("Video file select karein.", true);
+            return;
+        }
+
+        const data = new FormData();
+        data.append("mediaName", name);
+        data.append("mediaType", type);
+        data.append("file", file);
+
+        uploadButton.disabled = true;
+
+        try {
+            const response = await fetch(`${api}/upload`, {
+                method: "POST",
+                body: data
+            });
+
+            if (!response.ok) {
+                throw new Error(await response.text());
+            }
+
+            showMessage("Upload successful! Status: Active.");
+            form.reset();
+
+            await loadMedia();
+        } catch (error) {
+            showMessage("Upload error: " + error.message, true);
+        } finally {
+            uploadButton.disabled = false;
+        }
+    });
+
+    // Admin list: all records, including inactive ones
+    async function loadMedia() {
+        table.replaceChildren();
+
+        try {
+            const response = await fetch(api);
+
+            if (!response.ok)
+                throw new Error("List load nahi hui.");
+
+            const items = await response.json();
+
+            if (items.length === 0) {
+                const tr = document.createElement("tr");
+                const td = document.createElement("td");
+                td.colSpan = 5;
+                td.textContent = "Abhi koi media upload nahi hua.";
+                tr.appendChild(td);
+                table.appendChild(tr);
+                return;
+            }
+
+            items.forEach(item => {
+                const tr = document.createElement("tr");
+
+                function addCell(text = "") {
+                    const td = document.createElement("td");
+                    td.textContent = text;
+                    tr.appendChild(td);
+                    return td;
+                }
+
+                const previewCell = addCell();
+                const url = safeUrl(item.mediaUrl);
+
+                if (url && item.mediaType === "Image") {
+                    const img = document.createElement("img");
+                    img.src = url;
+                    img.alt = item.mediaName;
+                    img.className = "preview";
+                    img.loading = "lazy";
+                    previewCell.appendChild(img);
+                } else if (url && item.mediaType === "Video") {
+                    const video = document.createElement("video");
+                    video.src = url;
+                    video.controls = true;
+                    video.preload = "metadata";
+                    video.className = "preview";
+                    previewCell.appendChild(video);
+                } else {
+                    previewCell.textContent = "Preview unavailable";
+                }
+
+                addCell(item.mediaName);
+                addCell(item.mediaType);
+
+                const statusCell = addCell(
+                    item.isActive ? "Active" : "Inactive"
+                );
+
+                statusCell.className = item.isActive
+                    ? "status-active" : "status-inactive";
+
+                const actionCell = addCell();
+
+                const statusButton = document.createElement("button");
+                statusButton.className = item.isActive
+                    ? "deactivate" : "activate";
+
+                statusButton.textContent = item.isActive
+                    ? "Set Inactive" : "Set Active";
+
+                statusButton.onclick = async () => {
+                    statusButton.disabled = true;
+
+                    try {
+                        const result = await fetch(
+                            `${api}/${item.mediaId}/status`,
+                            {
+                                method: "PATCH",
+                                headers: {
+                                    "Content-Type": "application/json"
+                                },
+                                body: JSON.stringify({
+                                    isActive: !item.isActive
+                                })
+                            }
+                        );
+
+                        if (!result.ok)
+                            throw new Error(await result.text());
+
+                        showMessage("Status successfully updated.");
+                        await loadMedia();
+                    } catch (error) {
+                        showMessage(error.message, true);
+                        statusButton.disabled = false;
+                    }
+                };
+
+                const deleteButton = document.createElement("button");
+                deleteButton.className = "delete";
+                deleteButton.textContent = "Delete";
+
+                deleteButton.onclick = async () => {
+                    if (!confirm("Is media ko permanently delete karein?"))
+                        return;
+
+                    deleteButton.disabled = true;
+
+                    try {
+                        const result = await fetch(
+                            `${api}/${item.mediaId}`,
+                            { method: "DELETE" }
+                        );
+
+                        if (!result.ok)
+                            throw new Error(await result.text());
+
+                        showMessage("Media successfully deleted.");
+                        await loadMedia();
+                    } catch (error) {
+                        showMessage(error.message, true);
+                        deleteButton.disabled = false;
+                    }
+                };
+
+                actionCell.append(statusButton, deleteButton);
+                table.appendChild(tr);
+            });
+        } catch (error) {
+            showMessage(error.message, true);
+        }
+    }
+
+    loadMedia();
+</script>
+</body>
+</html>

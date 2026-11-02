@@ -1,0 +1,466 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Airborne Enquiry Form</title>
+
+<style>
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    font-family: Arial, sans-serif;
+    background: #f7f7f5;
+    color: #252525;
+}
+
+.enquiry-section {
+    max-width: 1150px;
+    margin: 55px auto;
+    padding: 20px;
+    display: grid;
+    grid-template-columns: 1fr 1.12fr;
+    gap: 38px;
+    align-items: stretch;
+}
+
+/* Left contact panel */
+.contact-panel {
+    position: relative;
+    overflow: hidden;
+    border-radius: 14px;
+    padding: 42px 35px;
+    color: white;
+    background:
+        linear-gradient(135deg, rgba(12, 17, 39, .94),
+        rgba(22, 25, 49, .79)),
+        url("images/helicopter.jpg") center/cover;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    min-height: 590px;
+}
+
+.tag {
+    color: #ff4357;
+    font-size: 13px;
+    font-weight: bold;
+    letter-spacing: 2px;
+}
+
+.contact-panel h1 {
+    font-size: 30px;
+    line-height: 1.3;
+    margin: 18px 0 12px;
+}
+
+.contact-panel p {
+    color: #eeeeee;
+    font-size: 14px;
+    line-height: 1.8;
+}
+
+.contact-info {
+    margin-top: 35px;
+}
+
+.info-item {
+    display: flex;
+    gap: 15px;
+    margin: 25px 0;
+    align-items: flex-start;
+}
+
+.info-icon {
+    background: rgba(255, 65, 88, .18);
+    color: #ff5367;
+    width: 42px;
+    height: 42px;
+    border-radius: 50%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    flex-shrink: 0;
+    font-size: 19px;
+}
+
+.info-item strong {
+    display: block;
+    margin-bottom: 7px;
+}
+
+.info-item p {
+    margin: 0;
+    overflow-wrap: anywhere;
+}
+
+.social-links {
+    display: flex;
+    gap: 12px;
+    margin-top: 25px;
+}
+
+.social-links span {
+    width: 35px;
+    height: 35px;
+    background: rgba(255,255,255,.12);
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+}
+
+/* Right form panel */
+.form-panel {
+    padding: 28px 0;
+}
+
+.form-panel h2 {
+    font-size: 27px;
+    margin: 5px 0 10px;
+}
+
+.subtitle {
+    color: #777;
+    font-size: 14px;
+    margin-bottom: 27px;
+}
+
+.form-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 15px;
+}
+
+.form-group {
+    min-width: 0;
+}
+
+.form-group.full-width {
+    grid-column: 1 / -1;
+}
+
+.form-group input,
+.form-group select,
+.form-group textarea {
+    width: 100%;
+    padding: 15px 13px;
+    border: 1px solid #e2e2e2;
+    border-radius: 5px;
+    background: transparent;
+    font-size: 14px;
+    font-family: inherit;
+    outline: none;
+    color: #333;
+    transition: border-color .2s;
+}
+
+.form-group input,
+.form-group select {
+    height: 52px;
+}
+
+.form-group input:focus,
+.form-group select:focus,
+.form-group textarea:focus {
+    border-color: #c9233d;
+}
+
+.form-group input::placeholder,
+.form-group textarea::placeholder {
+    color: #777;
+}
+
+.form-group select {
+    cursor: pointer;
+}
+
+.form-group textarea {
+    min-height: 110px;
+    resize: vertical;
+}
+
+.send-btn {
+    margin-top: 24px;
+    padding: 16px 25px;
+    border: none;
+    border-radius: 5px;
+    background: #c9233d;
+    color: white;
+    font-size: 13px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: background .2s;
+}
+
+.send-btn:hover {
+    background: #a91b31;
+}
+
+.message {
+    margin-top: 15px;
+    font-size: 14px;
+    color: #16733a;
+}
+
+/* Mobile responsive */
+@media (max-width: 768px) {
+    .enquiry-section {
+        grid-template-columns: 1fr;
+        margin: 15px auto;
+        gap: 20px;
+        padding: 15px;
+    }
+
+    .contact-panel {
+        min-height: auto;
+        padding: 30px 24px;
+    }
+
+    .contact-panel h1 {
+        font-size: 25px;
+    }
+
+    .form-panel {
+        padding: 15px 0;
+    }
+}
+
+@media (max-width: 420px) {
+    .form-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .form-group.full-width {
+        grid-column: auto;
+    }
+}
+</style>
+</head>
+
+<body>
+
+<section class="enquiry-section">
+
+    <!-- Left contact information -->
+    <div class="contact-panel">
+
+        <div>
+            <div class="tag">✈ &nbsp; GET IN TOUCH</div>
+
+            <h1>Plan your flight with Airborne</h1>
+
+            <p>
+                Share your route, dates and passengers.
+                Your enquiry goes straight to our flight desk
+                by email and we reply with options and a clear quote.
+            </p>
+
+            <div class="contact-info">
+
+                <div class="info-item">
+                    <div class="info-icon">☎</div>
+                    <div>
+                        <strong>Flight desk</strong>
+                        <p>+91 84000 01640</p>
+                        <p>+91 99199 96506</p>
+                    </div>
+                </div>
+
+                <div class="info-item">
+                    <div class="info-icon">✉</div>
+                    <div>
+                        <strong>Email</strong>
+                        <p>akramskies@gmail.com</p>
+                        <p>airbornflyingclub@gmail.com</p>
+                    </div>
+                </div>
+
+                <div class="info-item">
+                    <div class="info-icon">◷</div>
+                    <div>
+                        <strong>Working hours</strong>
+                        <p>Mon – Sat 09:00 – 19:00</p>
+                        <p>Medical 24×7</p>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+        <div class="social-links">
+            <span>f</span>
+            <span>◎</span>
+            <span>▶</span>
+            <span>in</span>
+        </div>
+
+    </div>
+
+    <!-- Right enquiry form -->
+    <div class="form-panel">
+
+        <h2>Send us a message</h2>
+        <div class="subtitle">Fields marked * are required.</div>
+
+        <form id="enquiryForm">
+
+            <div class="form-grid">
+
+                <div class="form-group">
+                    <input type="text" name="fullName"
+                           placeholder="Full name *" required>
+                </div>
+
+                <div class="form-group">
+                    <input type="tel" name="mobile"
+                           placeholder="Mobile number *"
+                           pattern="[0-9]{10}"
+                           maxlength="10" required>
+                </div>
+
+                <div class="form-group">
+                    <input type="email" name="email"
+                           placeholder="Email address">
+                </div>
+
+                <!-- Dropdown field -->
+                <div class="form-group">
+                    <select name="service" required>
+                        <option value="" disabled selected>
+                            Select service *
+                        </option>
+                        <option>Holy Travels</option>
+                        <option>Air Charter Service</option>
+                        <option>Air Ambulance</option>
+                        <option>Aero Sports &amp; Adventure</option>
+                        <option>Helipads &amp; Ground Handling</option>
+                        <option>Wedding &amp; Events</option>
+                        <option>Do Dham Same Day Return</option>
+                        <option>Do Dham Yatra - 3 Nights / 4 Days</option>
+                        <option>Char Dham Yatra - 5 Nights / 6 Days</option>
+                        <option>Hot Air Balloon</option>
+                        <option>Helicopter Joyride</option>
+                        <option>Flying Club Visit</option>
+                        <option>Other</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <input type="text" name="from"
+                           placeholder="From">
+                </div>
+
+                <div class="form-group">
+                    <input type="text" name="to"
+                           placeholder="To">
+                </div>
+
+                <div class="form-group">
+                    <input type="date" name="travelDate"
+                           aria-label="Travel date">
+                </div>
+
+                <div class="form-group">
+                    <select name="passengers">
+                        <option value="">Passengers</option>
+                        <option value="1">1 Passenger</option>
+                        <option value="2">2 Passengers</option>
+                        <option value="3">3 Passengers</option>
+                        <option value="4">4 Passengers</option>
+                        <option value="5">5 Passengers</option>
+                        <option value="6+">6+ Passengers</option>
+                    </select>
+                </div>
+
+                <div class="form-group full-width">
+                    <textarea name="tripDetails"
+                        placeholder="Tell us about your trip — senior citizens, medical needs, baggage, etc."></textarea>
+                </div>
+
+            </div>
+
+            <button type="submit" class="send-btn">
+                SEND ENQUIRY &nbsp; →
+            </button>
+
+            <div class="message" id="message"></div>
+
+        </form>
+    </div>
+
+</section>
+
+<script>
+
+const API_URL = "https://localhost:7049/api/Enquiry";
+
+document.getElementById("enquiryForm")
+    .addEventListener("submit", async function (event) {
+
+        event.preventDefault();
+
+        const formData = new FormData(this);
+
+        const data = {
+            fullName: formData.get("fullName"),
+            mobile: formData.get("mobile"),
+            email: formData.get("email") || null,
+            service: formData.get("service"),
+            fromLocation: formData.get("from") || null,
+            toLocation: formData.get("to") || null,
+            travelDate: formData.get("travelDate") || null,
+            passengers: formData.get("passengers") || null,
+            tripDetails: formData.get("tripDetails") || null
+        };
+
+        const message = document.getElementById("message");
+        const button = this.querySelector(".send-btn");
+
+        try {
+            button.disabled = true;
+            button.textContent = "SENDING...";
+
+            const response = await fetch(API_URL, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify(data)
+            });
+
+            const result = await response.json();
+
+            if (!response.ok) {
+                const errors = result.errors
+                    ? Object.values(result.errors).flat().join(" ")
+                    : result.message || "Enquiry submit nahi hui.";
+
+                throw new Error(errors);
+            }
+
+            message.style.color = "green";
+            message.textContent =
+                result.message + " Enquiry ID: " + result.enquiryId;
+
+            this.reset();
+
+        } catch (error) {
+            message.style.color = "red";
+            message.textContent =
+                "Error: " + error.message +
+                " API URL aur server check karein.";
+
+        } finally {
+            button.disabled = false;
+            button.textContent = "SEND ENQUIRY →";
+        }
+    });
+
+</script>
+
+</body>
+</html>

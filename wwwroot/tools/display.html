@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Media Gallery</title>
+
+    <style>
+        * { box-sizing: border-box; }
+
+        body {
+            margin: 0;
+            padding: 25px;
+            font-family: Cambria, serif;
+            background: #f3f6fb;
+            color: #263449;
+        }
+
+        h2 { color: #1677ff; }
+
+        .gallery {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 20px;
+        }
+
+        .card {
+            padding: 15px;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 3px 15px #00000010;
+            overflow: hidden;
+        }
+
+        .card img, .card video {
+            display: block;
+            width: 100%;
+            max-height: 250px;
+            object-fit: contain;
+            background: #f5f6f8;
+        }
+
+        .card h3 { overflow-wrap: anywhere; }
+        #message { white-space: pre-wrap; }
+    </style>
+</head>
+
+<body>
+    <h2>Our Media Gallery</h2>
+    <p id="message">Loading media...</p>
+    <div id="gallery" class="gallery"></div>
+
+    <script>
+        // ASP.NET Core API ka exact URL
+        const API_URL = "https://localhost:7049/api/Media/active";
+
+        async function loadActiveMedia() {
+            const gallery = document.getElementById("gallery");
+            const message = document.getElementById("message");
+
+            gallery.replaceChildren();
+            message.textContent = "Loading media...";
+
+            try {
+                const response = await fetch(API_URL);
+
+                if (!response.ok) {
+                    const details = await response.text();
+                    throw new Error(`API error ${response.status}: ${details}`);
+                }
+
+                const items = await response.json();
+
+                if (!Array.isArray(items) || items.length === 0) {
+                    message.textContent =
+                        "Abhi koi Active image/video available nahi hai.";
+                    return;
+                }
+
+                let shownCount = 0;
+
+                items.forEach(item => {
+                    let mediaUrl;
+
+                    try {
+                        mediaUrl = new URL(item.mediaUrl);
+                        if (!["https:", "http:"].includes(mediaUrl.protocol)) {
+                            return;
+                        }
+                    } catch {
+                        return;
+                    }
+
+                    const card = document.createElement("div");
+                    card.className = "card";
+
+                    const heading = document.createElement("h3");
+                    heading.textContent = item.mediaName || "Untitled media";
+                    card.appendChild(heading);
+
+                    if (item.mediaType === "Image") {
+                        const img = document.createElement("img");
+                        img.src = mediaUrl.href;
+                        img.alt = item.mediaName || "Gallery image";
+                        img.loading = "lazy";
+                        img.onerror = () => {
+                            img.alt = "Image load nahi hui. Cloudinary URL check karein.";
+                        };
+                        card.appendChild(img);
+                    } else if (item.mediaType === "Video") {
+                        const video = document.createElement("video");
+                        video.src = mediaUrl.href;
+                        video.controls = true;
+                        video.preload = "metadata";
+                        card.appendChild(video);
+                    } else {
+                        return;
+                    }
+
+                    gallery.appendChild(card);
+                    shownCount++;
+                });
+
+                message.textContent = shownCount > 0
+                    ? ""
+                    : "Active records mile, lekin valid media URL/type nahi mila. API response mein mediaUrl aur mediaType check karein.";
+            } catch (error) {
+                message.textContent =
+                    "Gallery load error: " + error.message +
+                    "\nCheck karein: API https://localhost:7049 par run ho rahi ho aur CORS allow ho.";
+            }
+        }
+
+        loadActiveMedia();
+    </script>
+</body>
+</html>

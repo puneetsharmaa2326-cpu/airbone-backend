@@ -1,0 +1,687 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Airborne Aviation</title>
+
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            font-family: Arial, sans-serif;
+            color: white;
+        }
+
+        .navbar {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            min-height: 85px;
+            padding: 15px 5%;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 20px;
+            z-index: 5;
+            background: rgba(20, 30, 35, 0.35);
+        }
+
+        .logo {
+            background: white;
+            color: #102b43;
+            padding: 9px 15px;
+            border-radius: 8px;
+            text-align: center;
+            min-width: 100px;
+        }
+
+        .logo span {
+            font-weight: bold;
+            font-size: 20px;
+        }
+
+        .logo small {
+            display: block;
+            color: #d92332;
+            font-weight: bold;
+            letter-spacing: 2px;
+        }
+
+        nav {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 22px;
+            flex-wrap: wrap;
+        }
+
+        nav a {
+            color: white;
+            text-decoration: none;
+            font-size: 13px;
+            font-weight: 600;
+        }
+
+        nav a:hover,
+        nav a.active {
+            color: #ff3545;
+        }
+
+        .hero {
+            min-height: 100vh;
+            position: relative;
+            display: flex;
+            align-items: center;
+            overflow: hidden;
+            background-color: #69766b;
+            background-image: none;
+            background-position: center;
+            background-size: cover;
+            background-repeat: no-repeat;
+        }
+
+        /* API se aane wali video */
+        .hero-video {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: none;
+            z-index: 0;
+            background: #69766b;
+        }
+
+        .overlay {
+            position: absolute;
+            inset: 0;
+            z-index: 1;
+            background: linear-gradient(
+                90deg,
+                rgba(0, 0, 0, 0.58),
+                rgba(0, 0, 0, 0.12)
+            );
+            pointer-events: none;
+        }
+
+        .hero-content {
+            position: relative;
+            z-index: 2;
+            width: 100%;
+            padding: 150px 8% 70px;
+        }
+
+        .company {
+            display: inline-block;
+            background: rgba(255, 255, 255, 0.2);
+            padding: 10px 15px;
+            border-radius: 30px;
+            font-size: 13px;
+        }
+
+        h1 {
+            margin: 20px 0 0;
+            font-size: clamp(36px, 5vw, 60px);
+            letter-spacing: -2px;
+        }
+
+        h1::first-letter {
+            color: #ff3545;
+        }
+
+        h2 {
+            margin-top: 5px;
+            font-size: clamp(25px, 3vw, 36px);
+        }
+
+        .services {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin: 25px 0 18px;
+        }
+
+        .services span {
+            background: rgba(255, 255, 255, 0.17);
+            border: 1px solid rgba(255, 255, 255, 0.35);
+            padding: 12px;
+            border-radius: 5px;
+            font-size: 13px;
+            font-weight: bold;
+        }
+
+        .buttons {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .buttons a {
+            display: inline-block;
+            padding: 14px 20px;
+            text-decoration: none;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: bold;
+        }
+
+        .primary-btn {
+            color: white;
+            background: #ed2639;
+        }
+
+        .secondary-btn {
+            background: white;
+            color: #26374a;
+        }
+
+        .social-links {
+            position: absolute;
+            left: 20px;
+            top: 48%;
+            z-index: 3;
+            display: grid;
+            gap: 10px;
+        }
+
+        .social-links a {
+            width: 34px;
+            height: 34px;
+            display: grid;
+            place-items: center;
+            color: white;
+            text-decoration: none;
+            border: 1px solid rgba(255, 255, 255, 0.6);
+            border-radius: 50%;
+        }
+
+        .floating-buttons {
+            position: fixed;
+            bottom: 30px;
+            right: 25px;
+            z-index: 10;
+            display: grid;
+            gap: 10px;
+        }
+
+        .floating-buttons a {
+            width: 43px;
+            height: 43px;
+            display: grid;
+            place-items: center;
+            border-radius: 50%;
+            background: #08b85c;
+            color: white;
+            font-size: 24px;
+            text-decoration: none;
+        }
+
+        .floating-buttons a + a {
+            background: #168bd0;
+        }
+
+        #apiStatus {
+            position: fixed;
+            bottom: 10px;
+            left: 10px;
+            z-index: 20;
+            max-width: calc(100% - 100px);
+            padding: 7px 12px;
+            border-radius: 5px;
+            background: rgba(0, 0, 0, 0.75);
+            color: white;
+            font-size: 12px;
+            overflow-wrap: anywhere;
+        }
+
+        @media (max-width: 900px) {
+            .navbar {
+                align-items: flex-start;
+                flex-direction: column;
+            }
+
+            nav {
+                justify-content: flex-start;
+                gap: 14px;
+            }
+
+            .hero-content {
+                padding-top: 210px;
+            }
+
+            .social-links {
+                display: none;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .hero-content {
+                padding-left: 5%;
+                padding-right: 5%;
+            }
+
+            .buttons a {
+                width: 100%;
+                text-align: center;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <header class="navbar">
+        <div class="logo">
+            <span>✈ ARST</span>
+            <small>AIRBORNE</small>
+        </div>
+
+        <nav>
+            <a href="#" class="active">Home</a>
+            <a href="#about">About Us</a>
+            <a href="#faqs">FAQs</a>
+            <a href="#services">Services</a>
+            <a href="#packages">Yatra Packages</a>
+            <a href="#gallery">Gallery</a>
+            <a href="#contact">Contact</a>
+        </nav>
+    </header>
+
+    <main id="hero" class="hero">
+
+        <!-- API se Active video yahan play hogi -->
+        <video
+            id="heroVideo"
+            class="hero-video"
+            autoplay
+            muted
+            <!-- loop -->
+            playsinline
+            preload="auto">
+        </video>    
+
+        <div class="overlay"></div>
+
+        <div class="hero-content">
+            <span id="companyName" class="company">
+                Airborne Aviation Academy Pvt Ltd
+            </span>
+
+            <h1 id="heading">Helicopter &amp; Charter</h1>
+
+            <h2 id="subHeading">Services Across India</h2>
+
+            <div class="services" id="services">
+                <span>🔴 Char Dham Yatra</span>
+                <span>🔵 Private Charters</span>
+                <span>🔴 Air Ambulance Jets</span>
+                <span>🔵 Joyrides &amp; Picnics</span>
+            </div>
+
+            <div class="buttons">
+                <a href="#contact" id="enquiryBtn" class="primary-btn">
+                    SEND ENQUIRY →
+                </a>
+
+                <a href="#packages" class="secondary-btn">
+                    HELICOPTER CHAR DHAM PACKAGES
+                </a>
+            </div>
+        </div>
+
+        <div class="social-links">
+            <a href="#facebook">f</a>
+            <a href="#instagram">◎</a>
+            <a href="#youtube">▶</a>
+            <a href="#linkedin">in</a>
+        </div>
+
+        <div class="floating-buttons">
+            <a href="https://wa.me/"
+               target="_blank"
+               rel="noopener"
+               title="WhatsApp">☏</a>
+
+            <a href="tel:+910000000000" title="Call">☎</a>
+        </div>
+
+    </main>
+
+    <div id="apiStatus">Loading media from API...</div>
+
+    <!-- <script>
+        const API_URL = "https://localhost:7049/api/Media/active";
+
+        let bannerImages = [];
+        let currentImageIndex = 0;
+        let sliderTimer = null;
+
+        const hero = document.getElementById("hero");
+        const heroVideo = document.getElementById("heroVideo");
+        const status = document.getElementById("apiStatus");
+
+        async function loadBanner() {
+            try {
+                status.textContent = "Loading active media from API...";
+
+                const response = await fetch(API_URL);
+
+                if (!response.ok) {
+                    const details = await response.text();
+                    throw new Error(
+                        "API error " + response.status + ": " + details
+                    );
+                }
+
+                const data = await response.json();
+
+                console.log("Media API response:", data);
+
+                if (!Array.isArray(data)) {
+                    throw new Error(
+                        "API response array format mein nahi hai."
+                    );
+                }
+
+                // Sirf Active images aur videos
+                const activeMedia = data.filter(item =>
+                    item.isActive === true &&
+                    typeof item.mediaUrl === "string" &&
+                    item.mediaUrl.trim() !== ""
+                );
+
+                // Active images
+                bannerImages = activeMedia
+                    .filter(item =>
+                        String(item.mediaType).toLowerCase() === "image"
+                    )
+                    .map(item => item.mediaUrl);
+
+                // Active videos
+                const videos = activeMedia.filter(item =>
+                    String(item.mediaType).toLowerCase() === "video"
+                );
+
+                console.log("Active images:", bannerImages);
+                console.log("Active videos:", videos);
+
+                // Agar Active video available hai to use play karein
+                if (videos.length > 0) {
+                    showVideo(videos[0].mediaUrl);
+                    return;
+                }
+
+                // Video nahi hai to image slider chalayen
+                if (bannerImages.length > 0) {
+                    showImages();
+                    return;
+                }
+
+                heroVideo.pause();
+                heroVideo.removeAttribute("src");
+                heroVideo.load();
+                heroVideo.style.display = "none";
+
+                hero.style.backgroundImage = "none";
+
+                status.textContent =
+                    "Koi Active image ya video nahi mila. Media Master ka status check karein.";
+
+            } catch (error) {
+                console.error("Media API loading error:", error);
+
+                status.textContent = "API error: " + error.message;
+
+                heroVideo.pause();
+                heroVideo.style.display = "none";
+                hero.style.backgroundImage = "none";
+            }
+        }
+
+        // Active video display aur playback
+        async function showVideo(videoUrl) {
+            if (sliderTimer !== null) {
+                clearInterval(sliderTimer);
+                sliderTimer = null;
+            }
+
+            hero.style.backgroundImage = "none";
+
+            heroVideo.pause();
+            heroVideo.src = videoUrl;
+            heroVideo.style.display = "block";
+            heroVideo.load();
+
+            heroVideo.onerror = function () {
+                console.error(
+                    "Video playback error:",
+                    heroVideo.error,
+                    videoUrl
+                );
+
+                status.textContent =
+                    "Video load nahi hui. Cloudinary URL aur video format check karein.";
+            };
+
+            heroVideo.oncanplay = async function () {
+                try {
+                    await heroVideo.play();
+
+                    status.textContent =
+                        "Active video loaded and playing.";
+                } catch (error) {
+                    console.warn("Video autoplay blocked:", error);
+
+                    status.textContent =
+                        "Video loaded. Play button dabayein.";
+                }
+            };
+
+            status.textContent = "Loading active video...";
+        }
+
+        // Active images ka slider
+        function showImages() {
+            heroVideo.pause();
+            heroVideo.removeAttribute("src");
+            heroVideo.load();
+            heroVideo.style.display = "none";
+
+            currentImageIndex = 0;
+            showImage(currentImageIndex);
+
+            if (sliderTimer !== null) {
+                clearInterval(sliderTimer);
+                sliderTimer = null;
+            }
+
+            if (bannerImages.length > 1) {
+                sliderTimer = setInterval(() => {
+                    currentImageIndex =
+                        (currentImageIndex + 1) % bannerImages.length;
+
+                    showImage(currentImageIndex);
+                }, 5000);
+            }
+
+            status.textContent =
+                "Active image slider: " +
+                bannerImages.length + " image(s) loaded.";
+        }
+
+        function showImage(index) {
+            const imageUrl = bannerImages[index];
+
+            if (!imageUrl) return;
+
+            hero.style.backgroundImage =
+                `linear-gradient(90deg, rgba(0,0,0,.58), rgba(0,0,0,.12)), url("${imageUrl}")`;
+        }
+
+        document.addEventListener("DOMContentLoaded", loadBanner);
+    </script> -->
+
+    
+        
+<script>
+    const API_URL = "https://localhost:7049/api/Media/active";
+
+    let mediaItems = [];
+    let currentIndex = 0;
+    let sliderTimer = null;
+
+    const hero = document.getElementById("hero");
+    const heroVideo = document.getElementById("heroVideo");
+    const status = document.getElementById("apiStatus");
+
+    async function loadBanner() {
+        try {
+            status.textContent = "Loading active media...";
+
+            const response = await fetch(API_URL);
+
+            if (!response.ok) {
+                throw new Error("API error: " + response.status);
+            }
+
+            const data = await response.json();
+
+            // Saare Active images aur videos ek list mein
+            mediaItems = data.filter(item =>
+                item.isActive === true &&
+                item.mediaUrl &&
+                (
+                    String(item.mediaType).toLowerCase() === "image" ||
+                    String(item.mediaType).toLowerCase() === "video"
+                )
+            );
+
+            console.log("Active media:", mediaItems);
+
+            if (mediaItems.length === 0) {
+                status.textContent = "Koi Active image/video nahi mila.";
+                return;
+            }
+
+            // Purana timer band karein
+            if (sliderTimer !== null) {
+                clearTimeout(sliderTimer);
+                sliderTimer = null;
+            }
+
+            currentIndex = 0;
+            showNextMedia();
+
+        } catch (error) {
+            console.error(error);
+            status.textContent = "API error: " + error.message;
+        }
+    }
+
+    function showNextMedia() {
+        if (mediaItems.length === 0) return;
+
+        const item = mediaItems[currentIndex];
+        const type = String(item.mediaType).toLowerCase();
+
+        // Har baar purana timer aur video event saaf karein
+        if (sliderTimer !== null) {
+            clearTimeout(sliderTimer);
+            sliderTimer = null;
+        }
+
+        heroVideo.onended = null;
+        heroVideo.onerror = null;
+        heroVideo.oncanplay = null;
+
+        if (type === "image") {
+            heroVideo.pause();
+            heroVideo.removeAttribute("src");
+            heroVideo.load();
+            heroVideo.style.display = "none";
+
+            const imageUrl = item.mediaUrl;
+
+            // Agli image tab dikhayein jab current image load ho
+            const img = new Image();
+
+            img.onload = function () {
+                hero.style.backgroundImage =
+                    `linear-gradient(90deg, rgba(0,0,0,.58), rgba(0,0,0,.12)), url("${imageUrl}")`;
+
+                status.textContent =
+                    "Image " + (currentIndex + 1) +
+                    " of " + mediaItems.length;
+
+                // Image 5 second baad agle media par jayegi
+                sliderTimer = setTimeout(moveToNext, 5000);
+            };
+
+            img.onerror = function () {
+                console.error("Image failed:", imageUrl);
+                status.textContent = "Image load nahi hui; next media try ho raha hai.";
+                sliderTimer = setTimeout(moveToNext, 1000);
+            };
+
+            img.src = imageUrl;
+
+        } else if (type === "video") {
+            hero.style.backgroundImage = "none";
+
+            heroVideo.pause();
+            heroVideo.src = item.mediaUrl;
+            heroVideo.style.display = "block";
+            heroVideo.load();
+
+            heroVideo.oncanplay = async function () {
+                try {
+                    await heroVideo.play();
+
+                    status.textContent =
+                        "Video " + (currentIndex + 1) +
+                        " of " + mediaItems.length;
+
+                } catch (error) {
+                    console.warn("Video autoplay blocked:", error);
+                    status.textContent =
+                        "Video play nahi hui; next media try ho raha hai.";
+
+                    sliderTimer = setTimeout(moveToNext, 3000);
+                }
+            };
+
+            // Video khatam hote hi next image/video
+            heroVideo.onended = function () {
+                moveToNext();
+            };
+
+            // Agar video load nahi hoti to slider aage badhe
+            heroVideo.onerror = function () {
+                console.error("Video failed:", item.mediaUrl);
+                status.textContent = "Video load nahi hui; next media try ho raha hai.";
+                sliderTimer = setTimeout(moveToNext, 2000);
+            };
+        }
+    }
+
+    function moveToNext() {
+        currentIndex = (currentIndex + 1) % mediaItems.length;
+        showNextMedia();
+    }
+
+    document.addEventListener("DOMContentLoaded", loadBanner);
+</script>
+
+
+
+
+
+</body>
+</html>
