@@ -151,4 +151,14 @@ app.UseAuthorization();
 
 app.MapControllers();
 
+
+app.MapGet("/", () => Results.Ok(new
+{
+    success = true,
+    message = "Airborne Backend is Running Successfully!",
+    status = "Live",
+    documentation = "/swagger/index.html"
+}));
+
+
 app.Run();
