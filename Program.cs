@@ -123,9 +123,10 @@ builder.Services.AddCors(options =>
     {
         policy
             .WithOrigins(
-                // New Netlify website
-                "https://marvelous-bienenstitch-ef5ebc.netlify.app",
+                 // New Netlify website
 
+                 "https://airborne-frontend.netlify.app",
+                
                 // Existing Netlify website
                 "https://airborne-aviation-web.netlify.app",
 
@@ -136,6 +137,29 @@ builder.Services.AddCors(options =>
                 "http://localhost:5501",
                 "http://127.0.0.1:5501",
 
+                "http://localhost:5502",
+                "http://127.0.0.1:5502"
+            )
+            .AllowAnyHeader()
+            .AllowAnyMethod();
+    });
+});
+
+
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AirborneFrontend", policy =>
+    {
+        policy
+            .WithOrigins(
+               
+                "https://marvelous-bienenstitch-ef5ebc.netlify.app",
+                "https://airborne-aviation-web.netlify.app",
+
+                "http://localhost:5500",
+                "http://127.0.0.1:5500",
+                "http://localhost:5501",
+                "http://127.0.0.1:5501",
                 "http://localhost:5502",
                 "http://127.0.0.1:5502"
             )
