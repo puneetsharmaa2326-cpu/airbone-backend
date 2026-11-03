@@ -1,25 +1,22 @@
-﻿using System.ComponentModel.DataAnnotations;
-
-namespace MediaMasterApi.Models
+﻿namespace MediaMasterApi.Models
 {
     public class MediaModel
     {
         public int MediaId { get; set; }
 
-        [Required]
-        [StringLength(200)]
-        public string MediaName { get; set; } = string.Empty;
+        public string MediaName { get; set; } = "";
 
-        [Required]
-        [RegularExpression("^(Image|Video)$")]
-        public string MediaType { get; set; } = "Image";
+        public int CategoryId { get; set; }
 
-        [Required]
-        public string MediaUrl { get; set; } = string.Empty;
+        public string CategoryName { get; set; } = "";
 
-        public string PublicId { get; set; } = string.Empty;
+        public string MediaType { get; set; } = "";
 
-        public bool IsActive { get; set; } = true;
+        public string MediaUrl { get; set; } = "";
+
+        public string PublicId { get; set; } = "";
+
+        public bool IsActive { get; set; }
 
         public DateTime CreatedDate { get; set; }
     }
