@@ -100,6 +100,7 @@ namespace WebApplication1.Controllers
             cmd.Parameters.Add("@IsActive", SqlDbType.Bit)
                 .Value = (object?)isActive ?? DBNull.Value;
 
+            // CategoryId parameter added
             cmd.Parameters.Add("@CategoryId", SqlDbType.Int)
                 .Value = (object?)categoryId ?? DBNull.Value;
         }
@@ -117,11 +118,15 @@ namespace WebApplication1.Controllers
                 MediaName = Convert.ToString(
                     reader["MediaName"]) ?? "",
 
-                CategoryId = Convert.ToInt32(
-                    reader["CategoryId"]),
+                // Handle NULL CategoryId for old records
+                CategoryId = reader["CategoryId"] == DBNull.Value
+                    ? 0
+                    : Convert.ToInt32(reader["CategoryId"]),
 
-                CategoryName = Convert.ToString(
-                    reader["CategoryName"]) ?? "",
+                // Handle NULL CategoryName
+                CategoryName = reader["CategoryName"] == DBNull.Value
+                    ? ""
+                    : Convert.ToString(reader["CategoryName"]) ?? "",
 
                 MediaType = Convert.ToString(
                     reader["MediaType"]) ?? "",
@@ -396,7 +401,9 @@ namespace WebApplication1.Controllers
                         "Unsupported image/video format.");
                 }
 
+                // =================================
                 // Upload to Cloudinary
+                // =================================
 
                 string mediaUrl;
                 string publicId;
@@ -452,7 +459,9 @@ namespace WebApplication1.Controllers
                     publicId = result.PublicId;
                 }
 
+                // =================================
                 // Save media in SQL Server
+                // =================================
 
                 await using var con =
                     new SqlConnection(_connectionString);
