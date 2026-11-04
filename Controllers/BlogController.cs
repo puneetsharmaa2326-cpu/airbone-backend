@@ -1,8 +1,11 @@
+
 using System.Data;
 using System.Security.Cryptography;
 using System.Text;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Data.SqlClient;
+using CloudinaryDotNet;
+using CloudinaryDotNet.Actions;
 using WebApplication1.Models;
 
 namespace WebApplication1.Controllers;
@@ -36,7 +39,39 @@ public class BlogController : ControllerBase
     private SqlConnection CreateConnection() => new(
         _configuration.GetConnectionString("DefaultConnection")
         ?? throw new InvalidOperationException(
-            "DefaultConnection is not configured."));
+            "The database connection string is not configured."));
+
+
+    // ==========================================
+    // CLOUDINARY CONNECTION
+    // ==========================================
+
+    private Cloudinary CreateCloudinary()
+    {
+        var cloudName = _configuration["Cloudinary:CloudName"];
+        var apiKey = _configuration["Cloudinary:ApiKey"];
+        var apiSecret = _configuration["Cloudinary:ApiSecret"];
+
+        if (string.IsNullOrWhiteSpace(cloudName) ||
+            string.IsNullOrWhiteSpace(apiKey) ||
+            string.IsNullOrWhiteSpace(apiSecret))
+        {
+            throw new InvalidOperationException(
+                "Cloudinary configuration is missing. Please check the server configuration.");
+        }
+
+        var account = new Account(
+            cloudName,
+            apiKey,
+            apiSecret
+        );
+
+        var cloudinary = new CloudinaryDotNet.Cloudinary(account);
+
+        cloudinary.Api.Secure = true;
+
+        return cloudinary;
+    }
 
 
     // ==========================================
@@ -74,7 +109,8 @@ public class BlogController : ControllerBase
         {
             return StatusCode(503, new
             {
-                message = "Blog admin API key is not configured on the server."
+                success = false,
+                message = "Blog administration is currently unavailable. The server API key has not been configured."
             });
         }
 
@@ -82,7 +118,8 @@ public class BlogController : ControllerBase
         {
             return Unauthorized(new
             {
-                message = "Missing or invalid X-Admin-Key header."
+                success = false,
+                message = "Access denied. A valid administrator API key is required."
             });
         }
 
@@ -101,7 +138,7 @@ public class BlogController : ControllerBase
 
         if (image.Length > MaxImageSize)
         {
-            return "Image size maximum 5 MB allowed hai.";
+            return "The uploaded image exceeds the maximum allowed size of 5 MB.";
         }
 
         var extension = Path.GetExtension(image.FileName)
@@ -109,7 +146,7 @@ public class BlogController : ControllerBase
 
         if (!AllowedExtensions.Contains(extension))
         {
-            return "Only JPG, JPEG, PNG and WEBP images allowed hain.";
+            return "Invalid image format. Only JPG, JPEG, PNG, and WEBP files are supported.";
         }
 
         var allowedTypes = new Dictionary<string, string>
@@ -126,7 +163,7 @@ public class BlogController : ControllerBase
                 expectedType,
                 StringComparison.OrdinalIgnoreCase))
         {
-            return "Image file type valid nahi hai.";
+            return "The uploaded file does not have a valid image content type.";
         }
 
         return null;
@@ -134,7 +171,7 @@ public class BlogController : ControllerBase
 
 
     // ==========================================
-    // SAVE IMAGE TO SERVER
+    // UPLOAD IMAGE TO CLOUDINARY
     // ==========================================
 
     private async Task<string?> SaveBlogImageAsync(IFormFile? image)
@@ -142,37 +179,46 @@ public class BlogController : ControllerBase
         if (image == null || image.Length == 0)
             return null;
 
-        var extension = Path.GetExtension(image.FileName)
-            .ToLowerInvariant();
+        var cloudinary = CreateCloudinary();
 
-        var folderPath = Path.Combine(
-            _environment.WebRootPath
-                ?? Path.Combine(_environment.ContentRootPath, "wwwroot"),
-            "uploads",
-            "blogs"
-        );
+        await using var stream = image.OpenReadStream();
 
-        Directory.CreateDirectory(folderPath);
-
-        var fileName = $"{Guid.NewGuid():N}{extension}";
-
-        var filePath = Path.Combine(folderPath, fileName);
-
-        await using (var stream = new FileStream(
-            filePath,
-            FileMode.CreateNew,
-            FileAccess.Write,
-            FileShare.None))
+        var uploadParams = new ImageUploadParams
         {
-            await image.CopyToAsync(stream);
+            File = new FileDescription(
+                image.FileName,
+                stream
+            ),
+
+            Folder = "airborne/blogs",
+
+            PublicId = Guid.NewGuid().ToString("N"),
+
+            Overwrite = false
+        };
+
+        var uploadResult = await cloudinary.UploadAsync(uploadParams);
+
+        if (uploadResult.Error != null)
+        {
+            throw new Exception(
+                "Cloudinary image upload failed: " +
+                uploadResult.Error.Message
+            );
         }
 
-        return $"{Request.Scheme}://{Request.Host}/uploads/blogs/{fileName}";
+        if (uploadResult.SecureUrl == null)
+        {
+            throw new Exception(
+                "Cloudinary did not return a valid secure image URL.");
+        }
+
+        return uploadResult.SecureUrl.ToString();
     }
 
 
     // ==========================================
-    // DELETE LOCAL BLOG IMAGE
+    // DELETE OLD LOCAL BLOG IMAGE
     // ==========================================
 
     private void DeleteBlogImage(string? imageUrl)
@@ -184,6 +230,7 @@ public class BlogController : ControllerBase
         {
             var uri = new Uri(imageUrl, UriKind.Absolute);
 
+            // Do not delete Cloudinary or external images.
             if (!string.Equals(
                 uri.Host,
                 Request.Host.Host,
@@ -218,7 +265,7 @@ public class BlogController : ControllerBase
         }
         catch
         {
-            // Image deletion failure should not break blog operations.
+            // Image cleanup failures must not interrupt blog operations.
         }
     }
 
@@ -230,10 +277,15 @@ public class BlogController : ControllerBase
     private static BlogModel ReadBlog(SqlDataReader reader) => new()
     {
         BlogId = Convert.ToInt32(reader["BlogId"]),
+
         Title = Convert.ToString(reader["Title"]) ?? string.Empty,
+
         Slug = Convert.ToString(reader["Slug"]) ?? string.Empty,
+
         Category = Convert.ToString(reader["Category"]) ?? string.Empty,
+
         Excerpt = Convert.ToString(reader["Excerpt"]) ?? string.Empty,
+
         Content = Convert.ToString(reader["Content"]) ?? string.Empty,
 
         ImageUrl = reader["ImageUrl"] == DBNull.Value
@@ -397,7 +449,8 @@ public class BlogController : ControllerBase
         {
             return StatusCode(500, new
             {
-                message = "Blogs load nahi ho sake. Database setup script run karein."
+                success = false,
+                message = "Unable to retrieve published blogs. Please try again later."
             });
         }
     }
@@ -416,7 +469,8 @@ public class BlogController : ControllerBase
         {
             return BadRequest(new
             {
-                message = "Valid blog slug required."
+                success = false,
+                message = "Please provide a valid blog slug."
             });
         }
 
@@ -441,7 +495,8 @@ public class BlogController : ControllerBase
             {
                 return NotFound(new
                 {
-                    message = "Published blog not found."
+                    success = false,
+                    message = "The requested published blog could not be found."
                 });
             }
 
@@ -451,7 +506,8 @@ public class BlogController : ControllerBase
         {
             return StatusCode(500, new
             {
-                message = "Blog load nahi ho saka."
+                success = false,
+                message = "Unable to retrieve the requested blog. Please try again later."
             });
         }
     }
@@ -499,7 +555,8 @@ public class BlogController : ControllerBase
         {
             return StatusCode(500, new
             {
-                message = "Admin blog list load nahi hui."
+                success = false,
+                message = "Unable to retrieve the blog management list. Please try again later."
             });
         }
     }
@@ -531,7 +588,8 @@ public class BlogController : ControllerBase
         {
             return BadRequest(new
             {
-                message = "Title, Slug aur Content required hain."
+                success = false,
+                message = "Title, slug, and content are required fields."
             });
         }
 
@@ -539,7 +597,11 @@ public class BlogController : ControllerBase
 
         if (imageError != null)
         {
-            return BadRequest(new { message = imageError });
+            return BadRequest(new
+            {
+                success = false,
+                message = imageError
+            });
         }
 
         string? uploadedImageUrl = null;
@@ -549,6 +611,7 @@ public class BlogController : ControllerBase
             if (model.Image != null)
             {
                 uploadedImageUrl = await SaveBlogImageAsync(model.Image);
+
                 model.ImageUrl = uploadedImageUrl;
             }
 
@@ -572,7 +635,8 @@ public class BlogController : ControllerBase
 
                 return StatusCode(500, new
                 {
-                    message = "Blog create nahi hua."
+                    success = false,
+                    message = "The blog could not be created. Please try again."
                 });
             }
 
@@ -581,7 +645,12 @@ public class BlogController : ControllerBase
             return CreatedAtAction(
                 nameof(GetBySlug),
                 new { slug = saved.Slug },
-                saved
+                new
+                {
+                    success = true,
+                    message = "Blog created successfully.",
+                    blog = saved
+                }
             );
         }
         catch (SqlException ex) when (ex.Number is 2601 or 2627)
@@ -590,7 +659,8 @@ public class BlogController : ControllerBase
 
             return Conflict(new
             {
-                message = "Ye slug pehle se use ho raha hai. Unique slug dein."
+                success = false,
+                message = "This blog slug already exists. Please use a unique slug."
             });
         }
         catch (SqlException)
@@ -599,7 +669,8 @@ public class BlogController : ControllerBase
 
             return StatusCode(500, new
             {
-                message = "Blog save nahi ho saka."
+                success = false,
+                message = "Unable to save the blog due to a database error. Please try again later."
             });
         }
         catch (Exception)
@@ -608,7 +679,8 @@ public class BlogController : ControllerBase
 
             return StatusCode(500, new
             {
-                message = "Blog create karte waqt error aaya."
+                success = false,
+                message = "An error occurred while creating the blog. Please verify the image upload configuration and try again."
             });
         }
     }
@@ -636,7 +708,8 @@ public class BlogController : ControllerBase
         {
             return BadRequest(new
             {
-                message = "Valid BlogId required."
+                success = false,
+                message = "Please provide a valid blog ID."
             });
         }
 
@@ -649,14 +722,21 @@ public class BlogController : ControllerBase
         {
             return BadRequest(new
             {
-                message = "Title, Slug aur Content required hain."
+                success = false,
+                message = "Title, slug, and content are required fields."
             });
         }
 
         var imageError = ValidateImage(model.Image);
 
         if (imageError != null)
-            return BadRequest(new { message = imageError });
+        {
+            return BadRequest(new
+            {
+                success = false,
+                message = imageError
+            });
+        }
 
         model.BlogId = id;
 
@@ -670,6 +750,7 @@ public class BlogController : ControllerBase
             if (model.Image != null)
             {
                 uploadedImageUrl = await SaveBlogImageAsync(model.Image);
+
                 model.ImageUrl = uploadedImageUrl;
             }
             else
@@ -697,20 +778,28 @@ public class BlogController : ControllerBase
 
                 return NotFound(new
                 {
-                    message = "Blog nahi mila."
+                    success = false,
+                    message = "The blog you are trying to update could not be found."
                 });
             }
 
             var updated = ReadBlog(reader);
 
             if (uploadedImageUrl != null &&
-                !string.Equals(oldImageUrl, uploadedImageUrl,
+                !string.Equals(
+                    oldImageUrl,
+                    uploadedImageUrl,
                     StringComparison.OrdinalIgnoreCase))
             {
                 DeleteBlogImage(oldImageUrl);
             }
 
-            return Ok(updated);
+            return Ok(new
+            {
+                success = true,
+                message = "Blog updated successfully.",
+                blog = updated
+            });
         }
         catch (SqlException ex) when (ex.Number is 2601 or 2627)
         {
@@ -718,7 +807,8 @@ public class BlogController : ControllerBase
 
             return Conflict(new
             {
-                message = "Ye slug pehle se use ho raha hai."
+                success = false,
+                message = "This blog slug is already in use. Please choose a different slug."
             });
         }
         catch (SqlException)
@@ -727,7 +817,8 @@ public class BlogController : ControllerBase
 
             return StatusCode(500, new
             {
-                message = "Blog update nahi ho saka."
+                success = false,
+                message = "Unable to update the blog due to a database error. Please try again later."
             });
         }
         catch (Exception)
@@ -736,7 +827,8 @@ public class BlogController : ControllerBase
 
             return StatusCode(500, new
             {
-                message = "Blog update karte waqt error aaya."
+                success = false,
+                message = "An error occurred while updating the blog. Please verify the image upload configuration and try again."
             });
         }
     }
@@ -764,27 +856,26 @@ public class BlogController : ControllerBase
         {
             return BadRequest(new
             {
-                message = "Valid BlogId required."
+                success = false,
+                message = "Please provide a valid blog ID."
             });
         }
 
         try
         {
-            // Get existing blog with all its details
             var blog = await GetBlogByIdAsync(id);
 
             if (blog == null)
             {
                 return NotFound(new
                 {
-                    message = "Blog nahi mila."
+                    success = false,
+                    message = "The requested blog could not be found."
                 });
             }
 
-            // Change only publication status
             blog.IsPublished = isPublished;
 
-            // Use existing UpdateBlog stored procedure
             await using var con = CreateConnection();
 
             await using var cmd = new SqlCommand(
@@ -803,7 +894,8 @@ public class BlogController : ControllerBase
             {
                 return NotFound(new
                 {
-                    message = "Blog status update nahi hua."
+                    success = false,
+                    message = "The blog status could not be updated because the blog was not found."
                 });
             }
 
@@ -813,8 +905,8 @@ public class BlogController : ControllerBase
             {
                 success = true,
                 message = isPublished
-                    ? "Blog successfully Published ho gaya."
-                    : "Blog successfully Draft ho gaya.",
+                    ? "Blog published successfully."
+                    : "Blog moved to draft successfully.",
                 blog = updatedBlog
             });
         }
@@ -822,14 +914,16 @@ public class BlogController : ControllerBase
         {
             return StatusCode(500, new
             {
-                message = "Database mein blog status update nahi ho saka."
+                success = false,
+                message = "Unable to update the blog status due to a database error."
             });
         }
         catch (Exception)
         {
             return StatusCode(500, new
             {
-                message = "Blog status change karte waqt error aaya."
+                success = false,
+                message = "An unexpected error occurred while changing the blog status."
             });
         }
     }
@@ -855,7 +949,8 @@ public class BlogController : ControllerBase
         {
             return BadRequest(new
             {
-                message = "Valid BlogId required."
+                success = false,
+                message = "Please provide a valid blog ID."
             });
         }
 
@@ -883,7 +978,8 @@ public class BlogController : ControllerBase
             {
                 return NotFound(new
                 {
-                    message = "Blog nahi mila."
+                    success = false,
+                    message = "The blog you are trying to delete could not be found."
                 });
             }
 
@@ -891,7 +987,8 @@ public class BlogController : ControllerBase
 
             return Ok(new
             {
-                message = "Blog delete ho gaya.",
+                success = true,
+                message = "Blog deleted successfully.",
                 blogId = id
             });
         }
@@ -899,14 +996,16 @@ public class BlogController : ControllerBase
         {
             return StatusCode(500, new
             {
-                message = "Blog delete nahi ho saka."
+                success = false,
+                message = "Unable to delete the blog due to a database error. Please try again later."
             });
         }
         catch (Exception)
         {
             return StatusCode(500, new
             {
-                message = "Blog delete karte waqt error aaya."
+                success = false,
+                message = "An unexpected error occurred while deleting the blog."
             });
         }
     }
