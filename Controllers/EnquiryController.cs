@@ -4,7 +4,6 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Data.SqlClient;
 using System.Data;
 
-
 namespace AirborneEnquiryApi.Controllers
 {
     [Route("api/[controller]")]
@@ -18,20 +17,40 @@ namespace AirborneEnquiryApi.Controllers
             _configuration = configuration;
         }
 
+        // ==========================================
+        // DATABASE CONNECTION
+        // ==========================================
+
+        private string GetConnectionString()
+        {
+            return _configuration.GetConnectionString("DefaultConnection")
+                ?? throw new InvalidOperationException(
+                    "The database connection string is not configured.");
+        }
+
+
+        // ==========================================
+        // 1. CREATE ENQUIRY
         // POST: api/Enquiry
-        // Nayi enquiry ko database mein insert karne ke liye
+        // ==========================================
 
         [HttpPost]
         public async Task<IActionResult> CreateEnquiry(
             [FromBody] EnquiryModel model)
         {
-            string connectionString =
-                _configuration.GetConnectionString("DefaultConnection")!;
+            if (model == null)
+            {
+                return BadRequest(new
+                {
+                    success = false,
+                    message = "Invalid enquiry request. Please provide valid enquiry details."
+                });
+            }
 
             try
             {
                 using SqlConnection con =
-                    new SqlConnection(connectionString);
+                    new SqlConnection(GetConnectionString());
 
                 using SqlCommand cmd =
                     new SqlCommand("SP_ManageEnquiry", con);
@@ -76,77 +95,92 @@ namespace AirborneEnquiryApi.Controllers
                 return Ok(new
                 {
                     success = true,
-                    message = "Enquiry submitted successfully.",
+                    message = "Your enquiry has been submitted successfully. Our team will contact you shortly.",
                     enquiryId = enquiryId
                 });
             }
             catch (Exception ex)
             {
-                // Error ko server log mein record karein.
                 Console.Error.WriteLine(ex);
 
                 return StatusCode(500, new
                 {
                     success = false,
-                    message = "Enquiry save nahi ho saki."
+                    message = "We were unable to submit your enquiry due to a technical issue. Please try again later."
                 });
             }
         }
 
 
+        // ==========================================
+        // 2. GET ALL ENQUIRIES
         // GET: api/Enquiry
-        // Database se sabhi enquiries ko fetch karne ke liye
+        // ==========================================
 
         [HttpGet]
         public async Task<IActionResult> GetEnquiries()
         {
-            string connectionString =
-                _configuration.GetConnectionString("DefaultConnection")!;
-
             try
             {
                 var enquiries = new List<object>();
 
-                using SqlConnection con = new SqlConnection(connectionString);
+                using SqlConnection con =
+                    new SqlConnection(GetConnectionString());
 
                 string query = @"
-            SELECT EnquiryId, FullName, Mobile, Email, Service,
-                   FromLocation, ToLocation, TravelDate,
-                   Passengers, TripDetails, CreatedDate
-            FROM EnquiryMaster
-            ORDER BY EnquiryId DESC";
+                    SELECT EnquiryId, FullName, Mobile, Email, Service,
+                           FromLocation, ToLocation, TravelDate,
+                           Passengers, TripDetails, CreatedDate
+                    FROM EnquiryMaster
+                    ORDER BY EnquiryId DESC";
 
                 using SqlCommand cmd = new SqlCommand(query, con);
 
                 await con.OpenAsync();
 
-                using SqlDataReader reader = await cmd.ExecuteReaderAsync();
+                using SqlDataReader reader =
+                    await cmd.ExecuteReaderAsync();
 
                 while (await reader.ReadAsync())
                 {
                     enquiries.Add(new
                     {
                         EnquiryId = reader["EnquiryId"],
+
                         FullName = reader["FullName"],
+
                         Mobile = reader["Mobile"],
+
                         Email = reader["Email"] == DBNull.Value
                             ? null : reader["Email"].ToString(),
+
                         Service = reader["Service"],
+
                         FromLocation = reader["FromLocation"] == DBNull.Value
                             ? null : reader["FromLocation"].ToString(),
+
                         ToLocation = reader["ToLocation"] == DBNull.Value
                             ? null : reader["ToLocation"].ToString(),
+
                         TravelDate = reader["TravelDate"] == DBNull.Value
                             ? null : reader["TravelDate"],
+
                         Passengers = reader["Passengers"] == DBNull.Value
                             ? null : reader["Passengers"].ToString(),
+
                         TripDetails = reader["TripDetails"] == DBNull.Value
                             ? null : reader["TripDetails"].ToString(),
+
                         CreatedDate = reader["CreatedDate"]
                     });
                 }
 
-                return Ok(enquiries);
+                return Ok(new
+                {
+                    success = true,
+                    message = "Enquiries retrieved successfully.",
+                    data = enquiries
+                });
             }
             catch (Exception ex)
             {
@@ -155,37 +189,44 @@ namespace AirborneEnquiryApi.Controllers
                 return StatusCode(500, new
                 {
                     success = false,
-                    message = "Enquiries fetch nahi ho sakin."
+                    message = "Unable to retrieve enquiries at this time. Please try again later."
                 });
             }
         }
 
 
-
-
-        // PUT: api/Enquiry/id
-        // Existing enquiry ko update karne ke liye
+        // ==========================================
+        // 3. UPDATE ENQUIRY
+        // PUT: api/Enquiry/{id}
+        // ==========================================
 
         [HttpPut("{id:int}")]
         public async Task<IActionResult> UpdateEnquiry(
-            int id, [FromBody] EnquiryModel model)
+            int id,
+            [FromBody] EnquiryModel model)
         {
             if (id <= 0)
             {
                 return BadRequest(new
                 {
                     success = false,
-                    message = "Valid Enquiry ID required."
+                    message = "Please provide a valid enquiry ID."
                 });
             }
 
-            string connectionString =
-                _configuration.GetConnectionString("DefaultConnection")!;
+            if (model == null)
+            {
+                return BadRequest(new
+                {
+                    success = false,
+                    message = "Invalid request. Please provide valid enquiry details."
+                });
+            }
 
             try
             {
                 using SqlConnection con =
-                    new SqlConnection(connectionString);
+                    new SqlConnection(GetConnectionString());
 
                 string query = @"
                     UPDATE EnquiryMaster
@@ -202,7 +243,8 @@ namespace AirborneEnquiryApi.Controllers
 
                 using SqlCommand cmd = new SqlCommand(query, con);
 
-                cmd.Parameters.Add("@EnquiryId", SqlDbType.Int).Value = id;
+                cmd.Parameters.Add("@EnquiryId", SqlDbType.Int)
+                    .Value = id;
 
                 cmd.Parameters.Add("@FullName", SqlDbType.NVarChar, 100)
                     .Value = model.FullName;
@@ -242,14 +284,14 @@ namespace AirborneEnquiryApi.Controllers
                     return NotFound(new
                     {
                         success = false,
-                        message = "Enquiry ID not found."
+                        message = "The requested enquiry could not be found."
                     });
                 }
 
                 return Ok(new
                 {
                     success = true,
-                    message = "Enquiry updated successfully.",
+                    message = "Enquiry details updated successfully.",
                     enquiryId = id
                 });
             }
@@ -260,14 +302,16 @@ namespace AirborneEnquiryApi.Controllers
                 return StatusCode(500, new
                 {
                     success = false,
-                    message = "Enquiry update nahi ho saki."
+                    message = "Unable to update the enquiry due to a technical issue. Please try again later."
                 });
             }
         }
 
 
-        // DELETE: api/Enquiry/id
-        // Enquiry ko database se delete karne ke liye
+        // ==========================================
+        // 4. DELETE ENQUIRY
+        // DELETE: api/Enquiry/{id}
+        // ==========================================
 
         [HttpDelete("{id:int}")]
         public async Task<IActionResult> DeleteEnquiry(int id)
@@ -277,17 +321,14 @@ namespace AirborneEnquiryApi.Controllers
                 return BadRequest(new
                 {
                     success = false,
-                    message = "Valid Enquiry ID required."
+                    message = "Please provide a valid enquiry ID."
                 });
             }
-
-            string connectionString =
-                _configuration.GetConnectionString("DefaultConnection")!;
 
             try
             {
                 using SqlConnection con =
-                    new SqlConnection(connectionString);
+                    new SqlConnection(GetConnectionString());
 
                 string query = @"
                     DELETE FROM EnquiryMaster
@@ -295,7 +336,8 @@ namespace AirborneEnquiryApi.Controllers
 
                 using SqlCommand cmd = new SqlCommand(query, con);
 
-                cmd.Parameters.Add("@EnquiryId", SqlDbType.Int).Value = id;
+                cmd.Parameters.Add("@EnquiryId", SqlDbType.Int)
+                    .Value = id;
 
                 await con.OpenAsync();
 
@@ -306,7 +348,7 @@ namespace AirborneEnquiryApi.Controllers
                     return NotFound(new
                     {
                         success = false,
-                        message = "Enquiry ID not found."
+                        message = "The requested enquiry could not be found."
                     });
                 }
 
@@ -324,11 +366,9 @@ namespace AirborneEnquiryApi.Controllers
                 return StatusCode(500, new
                 {
                     success = false,
-                    message = "Enquiry delete nahi ho saki."
+                    message = "Unable to delete the enquiry due to a technical issue. Please try again later."
                 });
             }
         }
-
-
     }
 }
