@@ -1,4 +1,3 @@
-
 using System.IdentityModel.Tokens.Jwt;
 using System.Text;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -17,52 +16,73 @@ builder.Services.AddControllers();
 // JWT CONFIGURATION
 // =====================================
 
-var configuredJwtSecret =
-    builder.Configuration["Jwt:Secret"] ?? string.Empty;
+// Login aur token validation dono mein Jwt:Key hi use hoga.
+var jwtSecret = builder.Configuration["Jwt:Key"];
 
-var jwtSecret = Encoding.UTF8.GetByteCount(configuredJwtSecret) >= 32
-    ? configuredJwtSecret
-    : "CONFIGURE_Jwt__Secret_WITH_A_RANDOM_SECRET_OF_32_BYTES_MINIMUM";
+if (string.IsNullOrWhiteSpace(jwtSecret) ||
+    Encoding.UTF8.GetByteCount(jwtSecret) < 32)
+{
+    throw new InvalidOperationException(
+        "Jwt:Key appsettings.json mein configure karein. Key minimum 32 bytes ki honi chahiye.");
+}
 
-builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+var jwtIssuer = builder.Configuration["Jwt:Issuer"]
+    ?? "AirborneAviationApi";
+
+var jwtAudience = builder.Configuration["Jwt:Audience"]
+    ?? "AirborneAviationClient";
+
+var connectionString =
+    builder.Configuration.GetConnectionString("DefaultConnection");
+
+if (string.IsNullOrWhiteSpace(connectionString))
+{
+    throw new InvalidOperationException(
+        "DefaultConnection appsettings.json mein configure nahi hai.");
+}
+
+builder.Services
+    .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
+        // JWT claims ko original names (sub, jti, unique_name) mein rakhega.
         options.MapInboundClaims = false;
 
-        options.TokenValidationParameters = new TokenValidationParameters
-        {
-            ValidateIssuer = true,
-            ValidIssuer = builder.Configuration["Jwt:Issuer"]
-                ?? "AirborneAviationApi",
+        options.TokenValidationParameters =
+            new TokenValidationParameters
+            {
+                ValidateIssuer = true,
+                ValidIssuer = jwtIssuer,
 
-            ValidateAudience = true,
-            ValidAudience = builder.Configuration["Jwt:Audience"]
-                ?? "AirborneAviationClient",
+                ValidateAudience = true,
+                ValidAudience = jwtAudience,
 
-            ValidateIssuerSigningKey = true,
-            IssuerSigningKey = new SymmetricSecurityKey(
-                Encoding.UTF8.GetBytes(jwtSecret)),
+                ValidateIssuerSigningKey = true,
+                IssuerSigningKey = new SymmetricSecurityKey(
+                    Encoding.UTF8.GetBytes(jwtSecret)),
 
-            ValidateLifetime = true,
-            ClockSkew = TimeSpan.FromSeconds(30)
-        };
+                ValidateLifetime = true,
+                ClockSkew = TimeSpan.FromSeconds(30)
+            };
 
         options.Events = new JwtBearerEvents
         {
             OnTokenValidated = async context =>
             {
-                var jti = context.Principal?
+                var principal = context.Principal;
+
+                string? jti = principal?
                     .FindFirst(JwtRegisteredClaimNames.Jti)?.Value;
 
-                var connectionString = context.HttpContext.RequestServices
-                    .GetRequiredService<IConfiguration>()
-                    .GetConnectionString("DefaultConnection");
+                string? userId = principal?
+                    .FindFirst(JwtRegisteredClaimNames.Sub)?.Value;
 
                 if (string.IsNullOrWhiteSpace(jti) ||
-                    string.IsNullOrWhiteSpace(connectionString))
+                    !Guid.TryParse(jti, out _) ||
+                    !int.TryParse(userId, out int parsedUserId) ||
+                    parsedUserId <= 0)
                 {
-                    context.Fail(
-                        "Token validation could not be completed.");
+                    context.Fail("JWT token claims are invalid.");
                     return;
                 }
 
@@ -73,43 +93,39 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 
                     await using var command = new SqlCommand(
                         @"SELECT CASE
-                            WHEN EXISTS (
+                            WHEN EXISTS
+                            (
                                 SELECT 1
                                 FROM dbo.RevokedAuthTokens
                                 WHERE Jti = @Jti
                             )
-                            OR NOT EXISTS (
-                                SELECT 1
-                                FROM dbo.AuthUsers
-                                WHERE UserId = @UserId
-                            )
-                            THEN 1 ELSE 0 END;",
+                            THEN 1
+                            ELSE 0
+                          END;",
                         connection);
 
-                    command.Parameters.AddWithValue("@Jti", jti);
-
-                    command.Parameters.AddWithValue(
-                        "@UserId",
-                        int.TryParse(
-                            context.Principal?
-                                .FindFirst(JwtRegisteredClaimNames.Sub)?.Value,
-                            out var id) ? id : -1);
+                    command.Parameters.Add(
+                        "@Jti",
+                        System.Data.SqlDbType.UniqueIdentifier
+                    ).Value = Guid.Parse(jti);
 
                     await connection.OpenAsync(
                         context.HttpContext.RequestAborted);
 
-                    var invalid = Convert.ToInt32(
-                        await command.ExecuteScalarAsync(
-                            context.HttpContext.RequestAborted));
+                    var result = await command.ExecuteScalarAsync(
+                        context.HttpContext.RequestAborted);
 
-                    if (invalid == 1)
+                    bool isRevoked =
+                        Convert.ToInt32(result) == 1;
+
+                    if (isRevoked)
                     {
-                        context.Fail(
-                            "Token has been revoked or the account no longer exists.");
+                        context.Fail("This token has been revoked.");
                     }
                 }
                 catch (SqlException)
                 {
+                    // Database validation unavailable means token is rejected.
                     context.Fail(
                         "Token validation service is unavailable.");
                 }
@@ -124,10 +140,14 @@ builder.Services.AddAuthorization();
 // =====================================
 
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
+
+builder.Services.AddSwaggerGen(options =>
+{
+    options.CustomSchemaIds(type => type.FullName);
+});
 
 // =====================================
-// CORS CONFIGURATION
+// CORS
 // =====================================
 
 builder.Services.AddCors(options =>
@@ -136,14 +156,10 @@ builder.Services.AddCors(options =>
     {
         policy
             .WithOrigins(
-                // Current Netlify frontend
                 "https://airborne-frontend.netlify.app",
-
-                // Other Netlify websites
                 "https://marvelous-bienenstitch-ef5ebc.netlify.app",
                 "https://airborne-aviation-web.netlify.app",
 
-                // Local frontend development
                 "http://localhost:5500",
                 "http://127.0.0.1:5500",
 
@@ -178,7 +194,6 @@ app.UseStaticFiles();
 
 app.UseRouting();
 
-// CORS before Authentication and Authorization
 app.UseCors("AirborneFrontend");
 
 app.UseAuthentication();

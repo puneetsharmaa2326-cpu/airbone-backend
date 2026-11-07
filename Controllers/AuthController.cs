@@ -1,4 +1,3 @@
-
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.Data.SqlClient;
@@ -28,7 +27,27 @@ namespace Practice_Api.Controllers
             ?? throw new InvalidOperationException(
                 "Database connection string missing.");
 
-        // 1. SIGN UP
+        // =====================================
+        // COMMON JWT CLAIM HELPERS
+        // =====================================
+
+        private int GetUserId()
+        {
+            return int.TryParse(
+                User.FindFirst(JwtRegisteredClaimNames.Sub)?.Value,
+                out int id) ? id : 0;
+        }
+
+        private string GetLoginId()
+        {
+            return User.FindFirst(
+                JwtRegisteredClaimNames.UniqueName)?.Value ?? "";
+        }
+
+        // =====================================
+        // 1. SIGNUP
+        // =====================================
+
         [HttpPost("signup")]
         public async Task<IActionResult> Signup(
             [FromBody] SignupRequest request)
@@ -39,33 +58,64 @@ namespace Practice_Api.Controllers
             string hash = BCrypt.Net.BCrypt.HashPassword(
                 request.Password);
 
-            await using var con = new SqlConnection(ConnectionString);
-            await using var cmd = new SqlCommand("dbo.CreateUser", con);
+            await using var con =
+                new SqlConnection(ConnectionString);
+
+            await using var cmd =
+                new SqlCommand("dbo.CreateUser", con);
+
             cmd.CommandType = CommandType.StoredProcedure;
 
-            cmd.Parameters.Add("@LoginId", SqlDbType.NVarChar, 100)
+            cmd.Parameters.Add(
+                "@LoginId", SqlDbType.NVarChar, 100)
                 .Value = request.LoginId.Trim();
 
-            cmd.Parameters.Add("@PasswordHash", SqlDbType.NVarChar, 255)
+            cmd.Parameters.Add(
+                "@PasswordHash", SqlDbType.NVarChar, 255)
                 .Value = hash;
 
-            cmd.Parameters.Add("@FullName", SqlDbType.NVarChar, 150)
+            cmd.Parameters.Add(
+                "@FullName", SqlDbType.NVarChar, 150)
                 .Value = request.FullName.Trim();
 
             await con.OpenAsync();
-            await using var reader = await cmd.ExecuteReaderAsync();
-            await reader.ReadAsync();
+
+            await using var reader =
+                await cmd.ExecuteReaderAsync();
+
+            if (!await reader.ReadAsync())
+            {
+                return StatusCode(500, new
+                {
+                    success = false,
+                    message = "Signup response was not returned by database."
+                });
+            }
 
             int success = Convert.ToInt32(reader["Success"]);
-            string message = Convert.ToString(reader["Message"])!;
+            string message =
+                Convert.ToString(reader["Message"]) ?? "";
 
             if (success == 0)
-                return Conflict(new { success = false, message });
+            {
+                return Conflict(new
+                {
+                    success = false,
+                    message
+                });
+            }
 
-            return Ok(new { success = true, message });
+            return Ok(new
+            {
+                success = true,
+                message
+            });
         }
 
+        // =====================================
         // 2. LOGIN
+        // =====================================
+
         [HttpPost("login")]
         public async Task<IActionResult> Login(
             [FromBody] LoginRequest request)
@@ -73,29 +123,45 @@ namespace Practice_Api.Controllers
             if (!ModelState.IsValid)
                 return BadRequest(ModelState);
 
-            await using var con = new SqlConnection(ConnectionString);
+            await using var con =
+                new SqlConnection(ConnectionString);
+
             await using var cmd =
                 new SqlCommand("dbo.GetUserForLogin", con);
 
             cmd.CommandType = CommandType.StoredProcedure;
-            cmd.Parameters.Add("@LoginId", SqlDbType.NVarChar, 100)
+
+            cmd.Parameters.Add(
+                "@LoginId", SqlDbType.NVarChar, 100)
                 .Value = request.LoginId.Trim();
 
             await con.OpenAsync();
-            await using var reader = await cmd.ExecuteReaderAsync();
+
+            await using var reader =
+                await cmd.ExecuteReaderAsync();
 
             if (!await reader.ReadAsync())
+            {
                 return Unauthorized(new
                 {
                     success = false,
                     message = "Invalid Login ID or Password"
                 });
+            }
 
             int userId = Convert.ToInt32(reader["UserId"]);
-            string loginId = Convert.ToString(reader["LoginId"])!;
-            string fullName = Convert.ToString(reader["FullName"])!;
-            string hash = Convert.ToString(reader["PasswordHash"])!;
-            bool isActive = Convert.ToBoolean(reader["IsActive"]);
+
+            string loginId =
+                Convert.ToString(reader["LoginId"]) ?? "";
+
+            string fullName =
+                Convert.ToString(reader["FullName"]) ?? "";
+
+            string hash =
+                Convert.ToString(reader["PasswordHash"]) ?? "";
+
+            bool isActive =
+                Convert.ToBoolean(reader["IsActive"]);
 
             if (!isActive ||
                 !BCrypt.Net.BCrypt.Verify(request.Password, hash))
@@ -107,36 +173,65 @@ namespace Practice_Api.Controllers
                 });
             }
 
+            // Same key used by Program.cs
             string key = _config["Jwt:Key"]
-                ?? throw new InvalidOperationException("JWT key missing");
+                ?? throw new InvalidOperationException(
+                    "Jwt:Key is missing.");
 
-            var keyBytes = Encoding.UTF8.GetBytes(key);
+            byte[] keyBytes = Encoding.UTF8.GetBytes(key);
+
             if (keyBytes.Length < 32)
+            {
                 throw new InvalidOperationException(
                     "JWT key must be at least 32 bytes.");
+            }
+
+            string issuer = _config["Jwt:Issuer"]
+                ?? "AirborneAviationApi";
+
+            string audience = _config["Jwt:Audience"]
+                ?? "AirborneAviationClient";
 
             int minutes = int.TryParse(
-                _config["Jwt:ExpiryMinutes"], out int m) ? m : 60;
+                _config["Jwt:ExpiryMinutes"],
+                out int m) ? m : 60;
 
-            DateTime expires = DateTime.UtcNow.AddMinutes(minutes);
+            DateTime expiresUtc =
+                DateTime.UtcNow.AddMinutes(minutes);
+
             string tokenId = Guid.NewGuid().ToString();
 
+            // IMPORTANT:
+            // Claims must match Program.cs validation.
             var claims = new[]
             {
-                new Claim(ClaimTypes.NameIdentifier, userId.ToString()),
-                new Claim(ClaimTypes.Name, loginId),
-                new Claim("jti", tokenId)
+                new Claim(
+                    JwtRegisteredClaimNames.Sub,
+                    userId.ToString()),
+
+                new Claim(
+                    JwtRegisteredClaimNames.UniqueName,
+                    loginId),
+
+                new Claim(
+                    JwtRegisteredClaimNames.Jti,
+                    tokenId)
             };
 
-            var signingKey = new SymmetricSecurityKey(keyBytes);
-            var credentials = new SigningCredentials(
-                signingKey, SecurityAlgorithms.HmacSha256);
+            var signingKey =
+                new SymmetricSecurityKey(keyBytes);
+
+            var credentials =
+                new SigningCredentials(
+                    signingKey,
+                    SecurityAlgorithms.HmacSha256);
 
             var token = new JwtSecurityToken(
-                issuer: _config["Jwt:Issuer"],
-                audience: _config["Jwt:Audience"],
+                issuer: issuer,
+                audience: audience,
                 claims: claims,
-                expires: expires,
+                notBefore: DateTime.UtcNow,
+                expires: expiresUtc,
                 signingCredentials: credentials);
 
             string tokenString =
@@ -147,12 +242,20 @@ namespace Practice_Api.Controllers
                 success = true,
                 message = "Login successful",
                 token = tokenString,
-                expiresUtc = expires,
-                user = new { userId, loginId, fullName }
+                expiresUtc,
+                user = new
+                {
+                    userId,
+                    loginId,
+                    fullName
+                }
             });
         }
 
-        // 3. UPDATE PASSWORD (login/token required)
+        // =====================================
+        // 3. CHANGE PASSWORD
+        // =====================================
+
         [Authorize]
         [HttpPut("change-password")]
         public async Task<IActionResult> ChangePassword(
@@ -162,68 +265,133 @@ namespace Practice_Api.Controllers
                 return BadRequest(ModelState);
 
             int userId = GetUserId();
-            if (userId <= 0)
-                return Unauthorized();
+            string loginId = GetLoginId();
 
-            await using var con = new SqlConnection(ConnectionString);
-            await using var cmd = new SqlCommand(
-                "dbo.GetUserForLogin", con);
+            if (userId <= 0 || string.IsNullOrWhiteSpace(loginId))
+            {
+                return Unauthorized(new
+                {
+                    success = false,
+                    message = "Invalid or expired login token. Please login again."
+                });
+            }
 
-            cmd.CommandType = CommandType.StoredProcedure;
-            cmd.Parameters.Add("@LoginId", SqlDbType.NVarChar, 100)
-                .Value = User.FindFirst(ClaimTypes.Name)?.Value ?? "";
+            await using var con =
+                new SqlConnection(ConnectionString);
 
             await con.OpenAsync();
-            await using var reader = await cmd.ExecuteReaderAsync();
 
-            if (!await reader.ReadAsync())
-                return Unauthorized();
+            // Verify old password
+            await using var cmd =
+                new SqlCommand("dbo.GetUserForLogin", con);
 
-            string oldHash = Convert.ToString(reader["PasswordHash"])!;
+            cmd.CommandType = CommandType.StoredProcedure;
+
+            cmd.Parameters.Add(
+                "@LoginId", SqlDbType.NVarChar, 100)
+                .Value = loginId;
+
+            string oldHash;
+
+            await using (var reader =
+                await cmd.ExecuteReaderAsync())
+            {
+                if (!await reader.ReadAsync())
+                {
+                    return Unauthorized(new
+                    {
+                        success = false,
+                        message = "User not found. Please login again."
+                    });
+                }
+
+                bool isActive =
+                    Convert.ToBoolean(reader["IsActive"]);
+
+                if (!isActive)
+                {
+                    return Unauthorized(new
+                    {
+                        success = false,
+                        message = "Your account is inactive."
+                    });
+                }
+
+                oldHash =
+                    Convert.ToString(reader["PasswordHash"]) ?? "";
+            }
+
             if (!BCrypt.Net.BCrypt.Verify(
                 request.CurrentPassword, oldHash))
             {
                 return BadRequest(new
                 {
                     success = false,
-                    message = "Current password is incorrect"
+                    message = "Current password is incorrect."
                 });
             }
-            await reader.DisposeAsync();
 
-            string newHash = BCrypt.Net.BCrypt.HashPassword(
-                request.NewPassword);
-
-            await using var update = new SqlCommand(
-                "dbo.UpdateUserPassword", con);
-            update.CommandType = CommandType.StoredProcedure;
-            update.Parameters.Add("@UserId", SqlDbType.Int).Value = userId;
-            update.Parameters.Add("@PasswordHash", SqlDbType.NVarChar, 255)
-                .Value = newHash;
-
-            int affected = Convert.ToInt32(
-                await update.ExecuteScalarAsync());
-
-            return affected == 1
-                ? Ok(new
-                {
-                    success = true,
-                    message = "Password updated. Please log in again."
-                })
-                : NotFound(new
+            if (request.CurrentPassword == request.NewPassword)
+            {
+                return BadRequest(new
                 {
                     success = false,
-                    message = "Active user not found"
+                    message = "New password must be different from old password."
                 });
+            }
+
+            string newHash =
+                BCrypt.Net.BCrypt.HashPassword(request.NewPassword);
+
+            await using var update =
+                new SqlCommand("dbo.UpdateUserPassword", con);
+
+            update.CommandType = CommandType.StoredProcedure;
+
+            update.Parameters.Add(
+                "@UserId", SqlDbType.Int)
+                .Value = userId;
+
+            update.Parameters.Add(
+                "@PasswordHash", SqlDbType.NVarChar, 255)
+                .Value = newHash;
+
+            object? result = await update.ExecuteScalarAsync();
+
+            int affected = result == null ||
+                           result == DBNull.Value
+                ? 0
+                : Convert.ToInt32(result);
+
+            if (affected != 1)
+            {
+                return NotFound(new
+                {
+                    success = false,
+                    message = "Password could not be updated. User not found."
+                });
+            }
+
+            return Ok(new
+            {
+                success = true,
+                message = "Password updated successfully. Please login again."
+            });
         }
 
-        // 4. LOGOUT (current token revoke)
+        // =====================================
+        // 4. LOGOUT
+        // =====================================
+
         [Authorize]
         [HttpPost("logout")]
         public async Task<IActionResult> Logout()
         {
-            string? jti = User.FindFirst("jti")?.Value;
-            string? exp = User.FindFirst("exp")?.Value;
+            string? jti =
+                User.FindFirst(JwtRegisteredClaimNames.Jti)?.Value;
+
+            string? exp =
+                User.FindFirst(JwtRegisteredClaimNames.Exp)?.Value;
 
             if (!Guid.TryParse(jti, out Guid tokenId) ||
                 !long.TryParse(exp, out long expiry))
@@ -231,19 +399,37 @@ namespace Practice_Api.Controllers
                 return BadRequest(new
                 {
                     success = false,
-                    message = "Token claims are invalid"
+                    message = "Token claims are invalid."
                 });
             }
 
             DateTime expiryUtc =
                 DateTimeOffset.FromUnixTimeSeconds(expiry).UtcDateTime;
 
-            await using var con = new SqlConnection(ConnectionString);
-            await using var cmd = new SqlCommand("dbo.RevokeToken", con);
-            cmd.CommandType = CommandType.StoredProcedure;
-            cmd.Parameters.Add("@TokenId", SqlDbType.UniqueIdentifier)
+            await using var con =
+                new SqlConnection(ConnectionString);
+
+            await using var cmd = new SqlCommand(
+                @"IF NOT EXISTS
+                  (
+                      SELECT 1
+                      FROM dbo.RevokedAuthTokens
+                      WHERE Jti = @Jti
+                  )
+                  BEGIN
+                      INSERT INTO dbo.RevokedAuthTokens
+                          (Jti, ExpiryUtc)
+                      VALUES
+                          (@Jti, @ExpiryUtc);
+                  END;",
+                con);
+
+            cmd.Parameters.Add(
+                "@Jti", SqlDbType.UniqueIdentifier)
                 .Value = tokenId;
-            cmd.Parameters.Add("@ExpiryUtc", SqlDbType.DateTime2)
+
+            cmd.Parameters.Add(
+                "@ExpiryUtc", SqlDbType.DateTime2)
                 .Value = expiryUtc;
 
             await con.OpenAsync();
@@ -252,73 +438,106 @@ namespace Practice_Api.Controllers
             return Ok(new
             {
                 success = true,
-                message = "Logout successful"
+                message = "Logout successful."
             });
         }
 
-        // 5. DELETE ACCOUNT (password required)
+        // =====================================
+        // 5. DELETE ACCOUNT
+        // =====================================
+
         [Authorize]
         [HttpDelete("delete-account")]
         public async Task<IActionResult> DeleteAccount(
             [FromBody] DeleteAccountRequest request)
         {
             int userId = GetUserId();
-            if (userId <= 0)
-                return Unauthorized();
+            string loginId = GetLoginId();
 
-            await using var con = new SqlConnection(ConnectionString);
-            await using var cmd = new SqlCommand(
-                "dbo.GetUserForLogin", con);
+            if (userId <= 0 || string.IsNullOrWhiteSpace(loginId))
+            {
+                return Unauthorized(new
+                {
+                    success = false,
+                    message = "Invalid login token."
+                });
+            }
 
-            cmd.CommandType = CommandType.StoredProcedure;
-            cmd.Parameters.Add("@LoginId", SqlDbType.NVarChar, 100)
-                .Value = User.FindFirst(ClaimTypes.Name)?.Value ?? "";
+            await using var con =
+                new SqlConnection(ConnectionString);
 
             await con.OpenAsync();
-            await using var reader = await cmd.ExecuteReaderAsync();
 
-            if (!await reader.ReadAsync())
-                return Unauthorized();
+            await using var cmd =
+                new SqlCommand("dbo.GetUserForLogin", con);
 
-            string hash = Convert.ToString(reader["PasswordHash"])!;
+            cmd.CommandType = CommandType.StoredProcedure;
+
+            cmd.Parameters.Add(
+                "@LoginId", SqlDbType.NVarChar, 100)
+                .Value = loginId;
+
+            string hash;
+
+            await using (var reader =
+                await cmd.ExecuteReaderAsync())
+            {
+                if (!await reader.ReadAsync())
+                {
+                    return Unauthorized(new
+                    {
+                        success = false,
+                        message = "User not found."
+                    });
+                }
+
+                hash =
+                    Convert.ToString(reader["PasswordHash"]) ?? "";
+            }
+
             if (!BCrypt.Net.BCrypt.Verify(request.Password, hash))
             {
                 return BadRequest(new
                 {
                     success = false,
-                    message = "Password is incorrect"
+                    message = "Password is incorrect."
                 });
             }
-            await reader.DisposeAsync();
 
-            await using var delete = new SqlCommand(
-                "dbo.DeleteUserAccount", con);
+            await using var delete =
+                new SqlCommand("dbo.DeleteUserAccount", con);
+
             delete.CommandType = CommandType.StoredProcedure;
-            delete.Parameters.Add("@UserId", SqlDbType.Int).Value = userId;
 
-            int affected = Convert.ToInt32(
-                await delete.ExecuteScalarAsync());
+            delete.Parameters.Add(
+                "@UserId", SqlDbType.Int)
+                .Value = userId;
+
+            object? result =
+                await delete.ExecuteScalarAsync();
+
+            int affected = result == null ||
+                           result == DBNull.Value
+                ? 0
+                : Convert.ToInt32(result);
 
             return affected == 1
                 ? Ok(new
                 {
                     success = true,
-                    message = "Account deleted successfully"
+                    message = "Account deleted successfully."
                 })
                 : NotFound(new
                 {
                     success = false,
-                    message = "User not found"
+                    message = "User not found."
                 });
         }
-
-        private int GetUserId()
-        {
-            return int.TryParse(
-                User.FindFirst(ClaimTypes.NameIdentifier)?.Value,
-                out int id) ? id : 0;
-        }
     }
+
+    // =====================================
+    // REQUEST MODELS
+    // =====================================
 
     public class SignupRequest
     {

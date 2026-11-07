@@ -1,679 +1,982 @@
 
+using System.Data;
 using CloudinaryDotNet;
 using CloudinaryDotNet.Actions;
-using MediaMasterApi.Models;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Data.SqlClient;
-using System.ComponentModel.DataAnnotations;
-using System.Data;
 using WebApplication1.Models;
 
-namespace WebApplication1.Controllers
+namespace WebApplication1.Controllers;
+
+[ApiController]
+[Route("api/[controller]")]
+public class MediaController : ControllerBase
 {
-    // =========================================
-    // MEDIA UPLOAD REQUEST DTO
-    // =========================================
+    private readonly string _connectionString;
+    private readonly Cloudinary _cloudinary;
 
-    public class MediaUploadRequest
+    private const long MaxFileSize = 50 * 1024 * 1024;
+
+    private static readonly string[] ImageExtensions =
     {
-        [Required]
-        public string MediaName { get; set; } = "";
+        ".jpg", ".jpeg", ".png", ".webp", ".gif"
+    };
 
-        [Required]
-        public int CategoryId { get; set; }
+    private static readonly string[] VideoExtensions =
+    {
+        ".mp4", ".webm", ".mov"
+    };
 
-        [Required]
-        public string MediaType { get; set; } = "";
+    public MediaController(
+        IConfiguration configuration)
+    {
+        _connectionString =
+            configuration.GetConnectionString("DefaultConnection")
+            ?? throw new Exception("Database connection missing.");
 
-        public bool IsActive { get; set; } = true;
+        var cloud = configuration.GetSection("Cloudinary");
 
-        [Required]
-        public IFormFile File { get; set; } = null!;
+        var account = new Account(
+            cloud["CloudName"],
+            cloud["ApiKey"],
+            cloud["ApiSecret"]
+        );
+
+        _cloudinary = new Cloudinary(account);
     }
 
-    // =========================================
-    // MEDIA CONTROLLER
-    // =========================================
+    // =====================================================
+    // DATABASE CONNECTION
+    // =====================================================
 
-    [ApiController]
-    [Route("api/[controller]")]
-    public class MediaController : ControllerBase
+    private SqlConnection GetConnection()
     {
-        private readonly string _connectionString;
-        private readonly Cloudinary? _cloudinary;
+        return new SqlConnection(_connectionString);
+    }
 
-        public MediaController(IConfiguration configuration)
+    private static void AddParameter(
+        SqlCommand cmd,
+        string name,
+        object? value,
+        SqlDbType? type = null,
+        int? size = null)
+    {
+        SqlParameter parameter;
+
+        if (type.HasValue)
         {
-            _connectionString =
-                configuration.GetConnectionString("DefaultConnection")
-                ?? throw new InvalidOperationException(
-                    "Database connection string missing.");
+            parameter = size.HasValue
+                ? cmd.Parameters.Add(name, type.Value, size.Value)
+                : cmd.Parameters.Add(name, type.Value);
+        }
+        else
+        {
+            parameter = cmd.Parameters.Add(
+                name,
+                SqlDbType.Variant
+            );
+        }
 
-            var cloudName = configuration["Cloudinary:CloudName"];
-            var apiKey = configuration["Cloudinary:ApiKey"];
-            var apiSecret = configuration["Cloudinary:ApiSecret"];
+        parameter.Value = value ?? DBNull.Value;
+    }
 
-            if (!string.IsNullOrWhiteSpace(cloudName) &&
-                !string.IsNullOrWhiteSpace(apiKey) &&
-                !string.IsNullOrWhiteSpace(apiSecret))
+    // =====================================================
+    // READ MEDIA FILE
+    // =====================================================
+
+    private static MediaFileModel ReadMediaFile(
+        SqlDataReader reader)
+    {
+        return new MediaFileModel
+        {
+            MediaFileId = Convert.ToInt32(
+                reader["MediaFileId"]),
+
+            MediaId = Convert.ToInt32(
+                reader["MediaId"]),
+
+            MediaType = reader["MediaType"]?.ToString() ?? "",
+
+            MediaUrl = reader["MediaUrl"]?.ToString() ?? "",
+
+            PublicId = reader["PublicId"] == DBNull.Value
+                ? null
+                : reader["PublicId"].ToString(),
+
+            CreatedDate = Convert.ToDateTime(
+                reader["CreatedDate"])
+        };
+    }
+
+    // =====================================================
+    // GET FILES BY MEDIA ID
+    // =====================================================
+
+    private async Task<List<MediaFileModel>> GetFiles(
+        int mediaId)
+    {
+        var files = new List<MediaFileModel>();
+
+        using var con = GetConnection();
+
+        using var cmd = new SqlCommand(
+            "SP_ManageMediaFiles", con);
+
+        cmd.CommandType = CommandType.StoredProcedure;
+
+        AddParameter(
+            cmd, "@Action", "GETBYMEDIAID",
+            SqlDbType.NVarChar, 30);
+
+        AddParameter(
+            cmd, "@MediaId", mediaId,
+            SqlDbType.Int);
+
+        await con.OpenAsync();
+
+        using var reader = await cmd.ExecuteReaderAsync();
+
+        while (await reader.ReadAsync())
+        {
+            files.Add(ReadMediaFile(reader));
+        }
+
+        return files;
+    }
+
+    // =====================================================
+    // GET SINGLE FILE
+    // =====================================================
+
+    private async Task<MediaFileModel?> GetFileById(
+        int mediaFileId)
+    {
+        using var con = GetConnection();
+
+        using var cmd = new SqlCommand(
+            "SP_ManageMediaFiles", con);
+
+        cmd.CommandType = CommandType.StoredProcedure;
+
+        AddParameter(
+            cmd, "@Action", "GETBYID",
+            SqlDbType.NVarChar, 30);
+
+        AddParameter(
+            cmd, "@MediaFileId", mediaFileId,
+            SqlDbType.Int);
+
+        await con.OpenAsync();
+
+        using var reader = await cmd.ExecuteReaderAsync();
+
+        if (!await reader.ReadAsync())
+            return null;
+
+        return ReadMediaFile(reader);
+    }
+
+    // =====================================================
+    // INSERT FILE RECORD
+    // =====================================================
+
+    private async Task<MediaFileModel> InsertFile(
+        int mediaId,
+        string mediaType,
+        string mediaUrl,
+        string? publicId)
+    {
+        using var con = GetConnection();
+
+        using var cmd = new SqlCommand(
+            "SP_ManageMediaFiles", con);
+
+        cmd.CommandType = CommandType.StoredProcedure;
+
+        AddParameter(
+            cmd, "@Action", "INSERT",
+            SqlDbType.NVarChar, 30);
+
+        AddParameter(
+            cmd, "@MediaId", mediaId,
+            SqlDbType.Int);
+
+        AddParameter(
+            cmd, "@MediaType", mediaType,
+            SqlDbType.NVarChar, 20);
+
+        AddParameter(
+            cmd, "@MediaUrl", mediaUrl,
+            SqlDbType.NVarChar, 2000);
+
+        AddParameter(
+            cmd, "@PublicId", publicId,
+            SqlDbType.NVarChar, 300);
+
+        await con.OpenAsync();
+
+        using var reader = await cmd.ExecuteReaderAsync();
+
+        if (!await reader.ReadAsync())
+            throw new Exception("File record insertion failed.");
+
+        return ReadMediaFile(reader);
+    }
+
+    // =====================================================
+    // UPDATE FILE RECORD
+    // =====================================================
+
+    private async Task UpdateFileRecord(
+        int fileId,
+        string mediaType,
+        string mediaUrl,
+        string? publicId)
+    {
+        using var con = GetConnection();
+
+        using var cmd = new SqlCommand(
+            "SP_ManageMediaFiles", con);
+
+        cmd.CommandType = CommandType.StoredProcedure;
+
+        AddParameter(
+            cmd, "@Action", "UPDATE",
+            SqlDbType.NVarChar, 30);
+
+        AddParameter(
+            cmd, "@MediaFileId", fileId,
+            SqlDbType.Int);
+
+        AddParameter(
+            cmd, "@MediaType", mediaType,
+            SqlDbType.NVarChar, 20);
+
+        AddParameter(
+            cmd, "@MediaUrl", mediaUrl,
+            SqlDbType.NVarChar, 2000);
+
+        AddParameter(
+            cmd, "@PublicId", publicId,
+            SqlDbType.NVarChar, 300);
+
+        await con.OpenAsync();
+
+        await cmd.ExecuteNonQueryAsync();
+    }
+
+    // =====================================================
+    // DELETE FILE RECORD
+    // =====================================================
+
+    private async Task DeleteFileRecord(int fileId)
+    {
+        using var con = GetConnection();
+
+        using var cmd = new SqlCommand(
+            "SP_ManageMediaFiles", con);
+
+        cmd.CommandType = CommandType.StoredProcedure;
+
+        AddParameter(
+            cmd, "@Action", "DELETE",
+            SqlDbType.NVarChar, 30);
+
+        AddParameter(
+            cmd, "@MediaFileId", fileId,
+            SqlDbType.Int);
+
+        await con.OpenAsync();
+
+        await cmd.ExecuteNonQueryAsync();
+    }
+
+    // =====================================================
+    // CLOUDINARY UPLOAD
+    // =====================================================
+
+    private async Task<(string Url, string PublicId, string Type)>
+        UploadToCloudinary(IFormFile file)
+    {
+        if (file == null || file.Length == 0)
+            throw new Exception("Please select a valid file.");
+
+        if (file.Length > MaxFileSize)
+            throw new Exception(
+                "Maximum file size allowed is 50 MB.");
+
+        string extension =
+            Path.GetExtension(file.FileName).ToLowerInvariant();
+
+        await using var stream = file.OpenReadStream();
+
+        var fileDescription = new FileDescription(
+            file.FileName,
+            stream
+        );
+
+        if (ImageExtensions.Contains(extension))
+        {
+            var uploadParams = new ImageUploadParams
             {
-                _cloudinary = new Cloudinary(
-                    new Account(cloudName, apiKey, apiSecret));
+                File = fileDescription,
+                Folder = "airborne/gallery"
+            };
 
-                _cloudinary.Api.Secure = true;
-            }
+            var result = await _cloudinary.UploadAsync(
+                uploadParams);
+
+            if (result.Error != null)
+                throw new Exception(result.Error.Message);
+
+            return (
+                result.SecureUrl?.ToString()
+                    ?? throw new Exception("Image URL missing."),
+                result.PublicId
+                    ?? throw new Exception("Image PublicId missing."),
+                "Image"
+            );
         }
 
-        // =========================================
-        // 1. COMMON SQL PARAMETERS
-        // =========================================
-
-        private static void AddParameters(
-            SqlCommand cmd,
-            string action,
-            int? id = null,
-            string? name = null,
-            string? type = null,
-            string? url = null,
-            string? publicId = null,
-            bool? isActive = null,
-            int? categoryId = null)
+        if (VideoExtensions.Contains(extension))
         {
-            cmd.Parameters.Add("@Action", SqlDbType.NVarChar, 20)
-                .Value = action;
+            var uploadParams = new VideoUploadParams
+            {
+                File = fileDescription,
+                Folder = "airborne/gallery"
+            };
 
-            cmd.Parameters.Add("@MediaId", SqlDbType.Int)
-                .Value = (object?)id ?? DBNull.Value;
+            var result = await _cloudinary.UploadAsync(
+                uploadParams);
 
-            cmd.Parameters.Add("@MediaName", SqlDbType.NVarChar, 200)
-                .Value = (object?)name ?? DBNull.Value;
+            if (result.Error != null)
+                throw new Exception(result.Error.Message);
 
-            cmd.Parameters.Add("@MediaType", SqlDbType.NVarChar, 20)
-                .Value = (object?)type ?? DBNull.Value;
-
-            cmd.Parameters.Add("@MediaUrl", SqlDbType.NVarChar, 1000)
-                .Value = (object?)url ?? DBNull.Value;
-
-            cmd.Parameters.Add("@PublicId", SqlDbType.NVarChar, 300)
-                .Value = (object?)publicId ?? DBNull.Value;
-
-            cmd.Parameters.Add("@IsActive", SqlDbType.Bit)
-                .Value = (object?)isActive ?? DBNull.Value;
-
-            // CategoryId parameter added
-            cmd.Parameters.Add("@CategoryId", SqlDbType.Int)
-                .Value = (object?)categoryId ?? DBNull.Value;
+            return (
+                result.SecureUrl?.ToString()
+                    ?? throw new Exception("Video URL missing."),
+                result.PublicId
+                    ?? throw new Exception("Video PublicId missing."),
+                "Video"
+            );
         }
 
-        // =========================================
-        // 2. READ MEDIA DATA
-        // =========================================
+        throw new Exception(
+            "Only JPG, JPEG, PNG, WEBP, GIF, MP4, WEBM and MOV allowed."
+        );
+    }
 
-        private static MediaModel ReadMedia(SqlDataReader reader)
+    // =====================================================
+    // CLOUDINARY DELETE
+    // =====================================================
+
+    private async Task DeleteCloudinaryFile(
+        MediaFileModel file)
+    {
+        if (string.IsNullOrWhiteSpace(file.PublicId))
+            return;
+
+        if (file.MediaType != "Image" &&
+            file.MediaType != "Video")
+            return;
+
+        var deletionParams = new DeletionParams(
+            file.PublicId)
         {
-            return new MediaModel
+            ResourceType = file.MediaType == "Video"
+                ? ResourceType.Video
+                : ResourceType.Image
+        };
+
+        var result = await _cloudinary.DestroyAsync(
+            deletionParams);
+
+        if (result.Error != null)
+            throw new Exception(
+                "Cloudinary deletion failed: " +
+                result.Error.Message);
+    }
+
+    // =====================================================
+    // GET ALL GALLERIES WITH FILES
+    // GET: api/Media
+    // =====================================================
+
+    [HttpGet]
+    public async Task<IActionResult> GetAll()
+    {
+        var galleries = new List<MediaModel>();
+
+        using var con = GetConnection();
+
+        using var cmd = new SqlCommand(
+            "SP_ManageMedia", con);
+
+        cmd.CommandType = CommandType.StoredProcedure;
+
+        AddParameter(
+            cmd, "@Action", "GETALL",
+            SqlDbType.NVarChar, 30);
+
+        await con.OpenAsync();
+
+        using var reader = await cmd.ExecuteReaderAsync();
+
+        while (await reader.ReadAsync())
+        {
+            galleries.Add(new MediaModel
             {
                 MediaId = Convert.ToInt32(reader["MediaId"]),
-
-                MediaName = Convert.ToString(
-                    reader["MediaName"]) ?? "",
-
-                // Handle NULL CategoryId for old records
-                CategoryId = reader["CategoryId"] == DBNull.Value
-                    ? 0
-                    : Convert.ToInt32(reader["CategoryId"]),
-
-                // Handle NULL CategoryName
-                CategoryName = reader["CategoryName"] == DBNull.Value
-                    ? ""
-                    : Convert.ToString(reader["CategoryName"]) ?? "",
-
-                MediaType = Convert.ToString(
-                    reader["MediaType"]) ?? "",
-
-                MediaUrl = Convert.ToString(
-                    reader["MediaUrl"]) ?? "",
-
-                PublicId = Convert.ToString(
-                    reader["PublicId"]) ?? "",
-
-                IsActive = Convert.ToBoolean(
-                    reader["IsActive"]),
-
-                CreatedDate = Convert.ToDateTime(
-                    reader["CreatedDate"])
-            };
+                MediaName = reader["MediaName"].ToString() ?? "",
+                CategoryId = Convert.ToInt32(reader["CategoryId"]),
+                CategoryName = reader["CategoryName"].ToString() ?? "",
+                IsActive = Convert.ToBoolean(reader["IsActive"]),
+                CreatedDate = Convert.ToDateTime(reader["CreatedDate"])
+            });
         }
 
-        // =========================================
-        // 3. GET MEDIA LIST FROM DATABASE
-        // =========================================
-
-        private async Task<List<MediaModel>> GetList(
-            string action,
-            int? id = null)
+        foreach (var gallery in galleries)
         {
-            var list = new List<MediaModel>();
+            gallery.Files = await GetFiles(gallery.MediaId);
+        }
 
-            await using var con =
-                new SqlConnection(_connectionString);
+        return Ok(galleries);
+    }
 
-            await using var cmd =
-                new SqlCommand("dbo.ManageMedia", con);
+    // =====================================================
+    // GET SINGLE GALLERY WITH FILES
+    // GET: api/Media/5
+    // =====================================================
 
+    [HttpGet("{id:int}")]
+    public async Task<IActionResult> GetById(int id)
+    {
+        MediaModel? gallery = null;
+
+        using (var con = GetConnection())
+        using (var cmd = new SqlCommand(
+            "SP_ManageMedia", con))
+        {
             cmd.CommandType = CommandType.StoredProcedure;
 
-            AddParameters(cmd, action, id);
+            AddParameter(
+                cmd, "@Action", "GETBYID",
+                SqlDbType.NVarChar, 30);
+
+            AddParameter(
+                cmd, "@MediaId", id,
+                SqlDbType.Int);
 
             await con.OpenAsync();
 
-            await using var reader =
-                await cmd.ExecuteReaderAsync();
+            using var reader = await cmd.ExecuteReaderAsync();
 
-            while (await reader.ReadAsync())
+            if (await reader.ReadAsync())
             {
-                list.Add(ReadMedia(reader));
-            }
-
-            return list;
-        }
-
-        // =========================================
-        // 4. VALIDATE CATEGORY
-        // =========================================
-
-        private async Task<bool> IsValidCategory(int categoryId)
-        {
-            await using var con =
-                new SqlConnection(_connectionString);
-
-            await using var cmd = new SqlCommand(
-                @"SELECT COUNT(1)
-                  FROM dbo.CategoryMaster
-                  WHERE CategoryId = @CategoryId
-                  AND IsActive = 1",
-                con);
-
-            cmd.Parameters.Add(
-                "@CategoryId", SqlDbType.Int).Value = categoryId;
-
-            await con.OpenAsync();
-
-            int count = Convert.ToInt32(
-                await cmd.ExecuteScalarAsync());
-
-            return count > 0;
-        }
-
-        // =========================================
-        // 5. GET ALL MEDIA
-        // GET: api/Media
-        // =========================================
-
-        [HttpGet]
-        public async Task<IActionResult> GetAll()
-        {
-            try
-            {
-                var data = await GetList("GETALL");
-
-                return Ok(data);
-            }
-            catch (Exception ex)
-            {
-                return StatusCode(500, new
+                gallery = new MediaModel
                 {
-                    success = false,
-                    message = "Unable to fetch media.",
-                    error = ex.Message
-                });
-            }
-        }
-
-        // =========================================
-        // 6. GET ACTIVE MEDIA
-        // GET: api/Media/active
-        // =========================================
-
-        [HttpGet("active")]
-        public async Task<IActionResult> GetActive()
-        {
-            try
-            {
-                var data = await GetList("GETACTIVE");
-
-                return Ok(data);
-            }
-            catch (Exception ex)
-            {
-                return StatusCode(500, new
-                {
-                    success = false,
-                    message = "Unable to fetch active media.",
-                    error = ex.Message
-                });
-            }
-        }
-
-        // =========================================
-        // 7. GET MEDIA BY ID
-        // GET: api/Media/5
-        // =========================================
-
-        [HttpGet("{id:int}")]
-        public async Task<IActionResult> GetById(int id)
-        {
-            if (id <= 0)
-                return BadRequest("Invalid MediaId.");
-
-            try
-            {
-                var data = await GetList("GETBYID", id);
-
-                if (data.Count == 0)
-                    return NotFound("Media not found.");
-
-                return Ok(data[0]);
-            }
-            catch (Exception ex)
-            {
-                return StatusCode(500, new
-                {
-                    success = false,
-                    message = "Unable to fetch media.",
-                    error = ex.Message
-                });
-            }
-        }
-
-        // =========================================
-        // 8. UPLOAD MEDIA WITH CATEGORY
-        // POST: api/Media/upload
-        // =========================================
-
-        [HttpPost("upload")]
-        [Consumes("multipart/form-data")]
-        [RequestSizeLimit(52_428_800)]
-        public async Task<IActionResult> Upload(
-            [FromForm] MediaUploadRequest request)
-        {
-            try
-            {
-                if (request == null)
-                    return BadRequest("Upload data is required.");
-
-                string mediaName = request.MediaName;
-                int categoryId = request.CategoryId;
-                string mediaType = request.MediaType;
-                bool isActive = request.IsActive;
-                IFormFile file = request.File;
-
-                // Check Cloudinary configuration
-
-                if (_cloudinary == null)
-                {
-                    return StatusCode(503,
-                        "Configure Cloudinary credentials before uploading media.");
-                }
-
-                // Validate media name
-
-                if (string.IsNullOrWhiteSpace(mediaName) ||
-                    mediaName.Length > 200)
-                {
-                    return BadRequest(
-                        "Media name required (max 200 characters).");
-                }
-
-                // Validate category
-
-                if (categoryId <= 0)
-                {
-                    return BadRequest(
-                        "Please select a valid category.");
-                }
-
-                bool categoryExists =
-                    await IsValidCategory(categoryId);
-
-                if (!categoryExists)
-                {
-                    return BadRequest(
-                        "Selected category does not exist or is inactive.");
-                }
-
-                // Validate file
-
-                if (file == null || file.Length == 0)
-                {
-                    return BadRequest(
-                        "Select an image or video.");
-                }
-
-                if (file.Length > 50 * 1024 * 1024)
-                {
-                    return BadRequest(
-                        "Maximum file size is 50 MB.");
-                }
-
-                mediaType = mediaType?.Trim() ?? "";
-
-                string extension = Path
-                    .GetExtension(file.FileName)
-                    .ToLowerInvariant();
-
-                string[] imageExtensions =
-                {
-                    ".jpg", ".jpeg", ".jfif",
-                    ".png", ".webp", ".gif"
+                    MediaId = Convert.ToInt32(reader["MediaId"]),
+                    MediaName = reader["MediaName"].ToString() ?? "",
+                    CategoryId = Convert.ToInt32(reader["CategoryId"]),
+                    CategoryName = reader["CategoryName"].ToString() ?? "",
+                    IsActive = Convert.ToBoolean(reader["IsActive"]),
+                    CreatedDate = Convert.ToDateTime(reader["CreatedDate"])
                 };
-
-                string[] videoExtensions =
-                {
-                    ".mp4", ".webm", ".mov"
-                };
-
-                bool isImage =
-                    mediaType.Equals(
-                        "Image",
-                        StringComparison.OrdinalIgnoreCase)
-                    &&
-                    file.ContentType.StartsWith(
-                        "image/",
-                        StringComparison.OrdinalIgnoreCase)
-                    &&
-                    imageExtensions.Contains(extension);
-
-                bool isVideo =
-                    mediaType.Equals(
-                        "Video",
-                        StringComparison.OrdinalIgnoreCase)
-                    &&
-                    file.ContentType.StartsWith(
-                        "video/",
-                        StringComparison.OrdinalIgnoreCase)
-                    &&
-                    videoExtensions.Contains(extension);
-
-                if (!isImage && !isVideo)
-                {
-                    return BadRequest(
-                        "Unsupported image/video format.");
-                }
-
-                // =================================
-                // Upload to Cloudinary
-                // =================================
-
-                string mediaUrl;
-                string publicId;
-
-                await using var stream = file.OpenReadStream();
-
-                if (isImage)
-                {
-                    var uploadParams = new ImageUploadParams
-                    {
-                        File = new FileDescription(
-                            file.FileName, stream),
-
-                        Folder = "mediamaster"
-                    };
-
-                    var result = await _cloudinary.UploadAsync(
-                        uploadParams);
-
-                    if (result.Error != null ||
-                        result.SecureUrl == null)
-                    {
-                        return StatusCode(
-                            502,
-                            "Cloudinary image upload failed.");
-                    }
-
-                    mediaUrl = result.SecureUrl.ToString();
-                    publicId = result.PublicId;
-                }
-                else
-                {
-                    var uploadParams = new VideoUploadParams
-                    {
-                        File = new FileDescription(
-                            file.FileName, stream),
-
-                        Folder = "mediamaster"
-                    };
-
-                    var result = await _cloudinary.UploadAsync(
-                        uploadParams);
-
-                    if (result.Error != null ||
-                        result.SecureUrl == null)
-                    {
-                        return StatusCode(
-                            502,
-                            "Cloudinary video upload failed.");
-                    }
-
-                    mediaUrl = result.SecureUrl.ToString();
-                    publicId = result.PublicId;
-                }
-
-                // =================================
-                // Save media in SQL Server
-                // =================================
-
-                await using var con =
-                    new SqlConnection(_connectionString);
-
-                await using var cmd =
-                    new SqlCommand("dbo.ManageMedia", con);
-
-                cmd.CommandType = CommandType.StoredProcedure;
-
-                AddParameters(
-                    cmd,
-                    "INSERT",
-                    name: mediaName.Trim(),
-                    type: isImage ? "Image" : "Video",
-                    url: mediaUrl,
-                    publicId: publicId,
-                    isActive: isActive,
-                    categoryId: categoryId
-                );
-
-                await con.OpenAsync();
-
-                await using var reader =
-                    await cmd.ExecuteReaderAsync();
-
-                if (!await reader.ReadAsync())
-                {
-                    throw new InvalidOperationException(
-                        "No saved record returned from database.");
-                }
-
-                var saved = ReadMedia(reader);
-
-                return CreatedAtAction(
-                    nameof(GetById),
-                    new { id = saved.MediaId },
-                    new
-                    {
-                        success = true,
-                        message = "Media uploaded and saved successfully.",
-                        data = saved
-                    });
-            }
-            catch (Exception ex)
-            {
-                return StatusCode(500, new
-                {
-                    success = false,
-                    message = "Media upload or database save failed.",
-                    error = ex.Message
-                });
             }
         }
 
-        // =========================================
-        // 9. UPDATE MEDIA STATUS
-        // PATCH: api/Media/5/status
-        // =========================================
+        if (gallery == null)
+            return NotFound("Gallery not found.");
 
-        [HttpPatch("{id:int}/status")]
-        public async Task<IActionResult> UpdateStatus(
-            int id,
-            [FromBody] MediaStatusRequest request)
+        gallery.Files = await GetFiles(id);
+
+        return Ok(gallery);
+    }
+
+    // =====================================================
+    // CREATE GALLERY
+    // POST: api/Media
+    // =====================================================
+
+    [HttpPost]
+    public async Task<IActionResult> Create(
+        [FromBody] MediaModel model)
+    {
+        if (string.IsNullOrWhiteSpace(model.MediaName))
+            return BadRequest("MediaName is required.");
+
+        using var con = GetConnection();
+
+        using var cmd = new SqlCommand(
+            "SP_ManageMedia", con);
+
+        cmd.CommandType = CommandType.StoredProcedure;
+
+        AddParameter(
+            cmd, "@Action", "INSERT",
+            SqlDbType.NVarChar, 30);
+
+        AddParameter(
+            cmd, "@MediaName", model.MediaName,
+            SqlDbType.NVarChar, 200);
+
+        AddParameter(
+            cmd, "@CategoryId", model.CategoryId,
+            SqlDbType.Int);
+
+        AddParameter(
+            cmd, "@IsActive", model.IsActive,
+            SqlDbType.Bit);
+
+        await con.OpenAsync();
+
+        using var reader = await cmd.ExecuteReaderAsync();
+
+        if (!await reader.ReadAsync())
+            return StatusCode(500, "Gallery creation failed.");
+
+        int id = Convert.ToInt32(reader["MediaId"]);
+
+        return CreatedAtAction(
+            nameof(GetById),
+            new { id },
+            new
+            {
+                message = "Gallery created successfully.",
+                mediaId = id
+            });
+    }
+
+    // =====================================================
+    // UPDATE GALLERY DETAILS
+    // PUT: api/Media/5
+    // =====================================================
+
+    [HttpPut("{id:int}")]
+    public async Task<IActionResult> Update(
+        int id,
+        [FromBody] MediaModel model)
+    {
+        if (string.IsNullOrWhiteSpace(model.MediaName))
+            return BadRequest("MediaName is required.");
+
+        using var con = GetConnection();
+
+        using var cmd = new SqlCommand(
+            "SP_ManageMedia", con);
+
+        cmd.CommandType = CommandType.StoredProcedure;
+
+        AddParameter(
+            cmd, "@Action", "UPDATE",
+            SqlDbType.NVarChar, 30);
+
+        AddParameter(
+            cmd, "@MediaId", id,
+            SqlDbType.Int);
+
+        AddParameter(
+            cmd, "@MediaName", model.MediaName,
+            SqlDbType.NVarChar, 200);
+
+        AddParameter(
+            cmd, "@CategoryId", model.CategoryId,
+            SqlDbType.Int);
+
+        AddParameter(
+            cmd, "@IsActive", model.IsActive,
+            SqlDbType.Bit);
+
+        await con.OpenAsync();
+
+        using var reader = await cmd.ExecuteReaderAsync();
+
+        if (!await reader.ReadAsync())
+            return NotFound("Gallery not found.");
+
+        return Ok(new
         {
-            if (id <= 0)
-                return BadRequest("Invalid MediaId.");
+            message = "Gallery updated successfully.",
+            mediaId = id
+        });
+    }
 
-            if (request == null)
-                return BadRequest("Status request is required.");
+    // =====================================================
+    // MULTIPLE IMAGE / VIDEO UPLOAD
+    // POST: api/Media/5/upload
+    // =====================================================
 
-            try
+    [HttpPost("{id:int}/upload")]
+    [Consumes("multipart/form-data")]
+    public async Task<IActionResult> UploadMultiple(
+        int id,
+         List<IFormFile> files)
+    {
+        if (files == null || files.Count == 0)
+            return BadRequest("Please select files.");
+
+        if (files.Any(f => f.Length > MaxFileSize))
+            return BadRequest("Each file must be 50 MB or smaller.");
+
+        // Verify gallery
+        var gallery = await GetGalleryExists(id);
+
+        if (!gallery)
+            return NotFound("Gallery not found.");
+
+        var uploaded = new List<MediaFileModel>();
+
+        try
+        {
+            foreach (var file in files)
             {
-                var existing = await GetList("GETBYID", id);
+                var upload = await UploadToCloudinary(file);
 
-                if (existing.Count == 0)
-                    return NotFound("Media not found.");
-
-                await using var con =
-                    new SqlConnection(_connectionString);
-
-                await using var cmd =
-                    new SqlCommand("dbo.ManageMedia", con);
-
-                cmd.CommandType = CommandType.StoredProcedure;
-
-                AddParameters(
-                    cmd,
-                    "SETSTATUS",
-                    id: id,
-                    isActive: request.IsActive
-                );
-
-                await con.OpenAsync();
-
-                await using var reader =
-                    await cmd.ExecuteReaderAsync();
-
-                if (!await reader.ReadAsync())
+                try
                 {
-                    return NotFound(
-                        "Media status update failed.");
+                    var saved = await InsertFile(
+                        id,
+                        upload.Type,
+                        upload.Url,
+                        upload.PublicId
+                    );
+
+                    uploaded.Add(saved);
                 }
+                catch
+                {
+                    // Remove orphaned Cloudinary upload
+                    await DeleteCloudinaryFile(
+                        new MediaFileModel
+                        {
+                            MediaType = upload.Type,
+                            PublicId = upload.PublicId
+                        });
 
-                return Ok(new
-                {
-                    success = true,
-                    message = "Media status updated successfully.",
-                    data = ReadMedia(reader)
-                });
+                    throw;
+                }
             }
-            catch (Exception ex)
+
+            return Ok(new
             {
-                return StatusCode(500, new
-                {
-                    success = false,
-                    message = "Unable to update media status.",
-                    error = ex.Message
-                });
+                message = "Files uploaded successfully.",
+                mediaId = id,
+                files = uploaded
+            });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new
+            {
+                message = ex.Message,
+                uploadedFiles = uploaded
+            });
+        }
+    }
+
+    // =====================================================
+    // CHECK GALLERY EXISTS
+    // =====================================================
+
+    private async Task<bool> GetGalleryExists(int id)
+    {
+        using var con = GetConnection();
+
+        using var cmd = new SqlCommand(
+            "SP_ManageMedia", con);
+
+        cmd.CommandType = CommandType.StoredProcedure;
+
+        AddParameter(
+            cmd, "@Action", "GETBYID",
+            SqlDbType.NVarChar, 30);
+
+        AddParameter(
+            cmd, "@MediaId", id,
+            SqlDbType.Int);
+
+        await con.OpenAsync();
+
+        using var reader = await cmd.ExecuteReaderAsync();
+
+        return await reader.ReadAsync();
+    }
+
+    // =====================================================
+    // ADD MULTIPLE EXTERNAL URLS
+    // POST: api/Media/5/urls
+    // =====================================================
+
+    [HttpPost("{id:int}/urls")]
+    public async Task<IActionResult> AddUrls(
+        int id,
+        [FromBody] MediaUrlRequest request)
+    {
+        if (!await GetGalleryExists(id))
+            return NotFound("Gallery not found.");
+
+        if (request.MediaId != id)
+            return BadRequest("MediaId mismatch.");
+
+        var saved = new List<MediaFileModel>();
+
+        var allUrls = new List<(string Url, string Type)>();
+
+        allUrls.AddRange(
+            request.ImageUrls.Select(x => (x, "ImageUrl")));
+
+        allUrls.AddRange(
+            request.VideoUrls.Select(x => (x, "VideoUrl")));
+
+        if (allUrls.Count == 0)
+            return BadRequest("Please provide URLs.");
+
+        foreach (var item in allUrls)
+        {
+            if (!Uri.TryCreate(
+                item.Url,
+                UriKind.Absolute,
+                out var uri) ||
+                (uri.Scheme != Uri.UriSchemeHttp &&
+                 uri.Scheme != Uri.UriSchemeHttps))
+            {
+                return BadRequest(
+                    "Invalid external URL: " + item.Url);
             }
         }
 
-        // =========================================
-        // 10. DELETE MEDIA
-        // DELETE: api/Media/5
-        // =========================================
-
-        [HttpDelete("{id:int}")]
-        public async Task<IActionResult> Delete(int id)
+        foreach (var item in allUrls)
         {
-            if (id <= 0)
-                return BadRequest("Invalid MediaId.");
+            saved.Add(await InsertFile(
+                id,
+                item.Type,
+                item.Url,
+                null
+            ));
+        }
 
-            try
-            {
-                var data = await GetList("GETBYID", id);
+        return Ok(new
+        {
+            message = "External URLs added successfully.",
+            files = saved
+        });
+    }
 
-                if (data.Count == 0)
-                    return NotFound("Media not found.");
+    // =====================================================
+    // REPLACE EXISTING IMAGE / VIDEO
+    // PUT: api/Media/file/10/replace
+    // =====================================================
 
-                var item = data[0];
+    [HttpPut("file/{fileId:int}/replace")]
+    [Consumes("multipart/form-data")]
+        public async Task<IActionResult> ReplaceFile(
+            int fileId,
+            IFormFile file)
+    {
+        if (file == null || file.Length == 0)
+            return BadRequest("Replacement file required.");
 
-                if (_cloudinary == null)
+        var oldFile = await GetFileById(fileId);
+
+        if (oldFile == null)
+            return NotFound("File not found.");
+
+        if (oldFile.MediaType != "Image" &&
+            oldFile.MediaType != "Video")
+            return BadRequest(
+                "Only Cloudinary Image/Video can be replaced.");
+
+        var upload = await UploadToCloudinary(file);
+
+        try
+        {
+            await UpdateFileRecord(
+                fileId,
+                upload.Type,
+                upload.Url,
+                upload.PublicId
+            );
+        }
+        catch
+        {
+            await DeleteCloudinaryFile(
+                new MediaFileModel
                 {
-                    return StatusCode(
-                        503,
-                        "Configure Cloudinary credentials before deleting media.");
-                }
-
-                // Delete from Cloudinary
-
-                var resourceType = item.MediaType == "Video"
-                    ? CloudinaryDotNet.Actions.ResourceType.Video
-                    : CloudinaryDotNet.Actions.ResourceType.Image;
-
-                var deleteParams = new DeletionParams(
-                    item.PublicId)
-                {
-                    ResourceType = resourceType
-                };
-
-                var result = await _cloudinary.DestroyAsync(
-                    deleteParams);
-
-                if (result.Error != null)
-                {
-                    return StatusCode(
-                        502,
-                        "Cloudinary delete failed.");
-                }
-
-                // Delete from SQL Server
-
-                await using var con =
-                    new SqlConnection(_connectionString);
-
-                await using var cmd =
-                    new SqlCommand("dbo.ManageMedia", con);
-
-                cmd.CommandType = CommandType.StoredProcedure;
-
-                AddParameters(
-                    cmd,
-                    "DELETE",
-                    id: id
-                );
-
-                await con.OpenAsync();
-
-                int rows = Convert.ToInt32(
-                    await cmd.ExecuteScalarAsync());
-
-                if (rows == 0)
-                {
-                    return NotFound(
-                        "Database record not found.");
-                }
-
-                return Ok(new
-                {
-                    success = true,
-                    message = "Media deleted successfully."
+                    MediaType = upload.Type,
+                    PublicId = upload.PublicId
                 });
-            }
-            catch (Exception ex)
+
+            throw;
+        }
+
+        try
+        {
+            await DeleteCloudinaryFile(oldFile);
+        }
+        catch (Exception ex)
+        {
+            // New file is already saved. Report cleanup failure.
+            return Ok(new
             {
-                return StatusCode(500, new
-                {
-                    success = false,
-                    message = "Unable to delete media.",
-                    error = ex.Message
-                });
+                message = "File replaced, but old Cloudinary file cleanup failed.",
+                warning = ex.Message,
+                fileId
+            });
+        }
+
+        return Ok(new
+        {
+            message = "File replaced successfully.",
+            fileId,
+            mediaUrl = upload.Url,
+            mediaType = upload.Type
+        });
+    }
+
+    // =====================================================
+    // EDIT EXTERNAL URL
+    // PUT: api/Media/file/10/url
+    // =====================================================
+
+    [HttpPut("file/{fileId:int}/url")]
+    public async Task<IActionResult> EditExternalUrl(
+        int fileId,
+        [FromBody] MediaUrlRequest request)
+    {
+        var file = await GetFileById(fileId);
+
+        if (file == null)
+            return NotFound("File not found.");
+
+        if (file.MediaType != "ImageUrl" &&
+            file.MediaType != "VideoUrl" &&
+            file.MediaType != "Url")
+            return BadRequest("This is not an external URL.");
+
+        string? newUrl = file.MediaType == "VideoUrl"
+            ? request.VideoUrls.FirstOrDefault()
+            : request.ImageUrls.FirstOrDefault();
+
+        if (string.IsNullOrWhiteSpace(newUrl) ||
+            !Uri.TryCreate(newUrl, UriKind.Absolute, out var uri) ||
+            (uri.Scheme != "http" && uri.Scheme != "https"))
+        {
+            return BadRequest("Valid external URL required.");
+        }
+
+        await UpdateFileRecord(
+            fileId,
+            file.MediaType,
+            newUrl,
+            null
+        );
+
+        return Ok(new
+        {
+            message = "External URL updated successfully."
+        });
+    }
+
+    // =====================================================
+    // DELETE INDIVIDUAL FILE
+    // DELETE: api/Media/file/10
+    // =====================================================
+
+    [HttpDelete("file/{fileId:int}")]
+    public async Task<IActionResult> DeleteFile(int fileId)
+    {
+        var file = await GetFileById(fileId);
+
+        if (file == null)
+            return NotFound("File not found.");
+
+        // Delete Cloudinary file first
+        await DeleteCloudinaryFile(file);
+
+        // Then delete database record
+        await DeleteFileRecord(fileId);
+
+        return Ok(new
+        {
+            message = "File deleted successfully.",
+            mediaFileId = fileId
+        });
+    }
+
+    // =====================================================
+    // DELETE COMPLETE GALLERY
+    // DELETE: api/Media/5
+    // =====================================================
+
+    [HttpDelete("{id:int}")]
+    public async Task<IActionResult> DeleteGallery(int id)
+    {
+        if (!await GetGalleryExists(id))
+            return NotFound("Gallery not found.");
+
+        var files = await GetFiles(id);
+
+        // First delete all Cloudinary files
+        foreach (var file in files)
+        {
+            await DeleteCloudinaryFile(file);
+        }
+
+        using var con = GetConnection();
+
+        await con.OpenAsync();
+
+        using var transaction = await con.BeginTransactionAsync();
+
+        try
+        {
+            // Delete child records first
+            using (var childCmd = new SqlCommand(
+                "SP_ManageMediaFiles", con, (SqlTransaction)transaction))
+            {
+                childCmd.CommandType = CommandType.StoredProcedure;
+
+                AddParameter(
+                    childCmd, "@Action", "DELETEBYMEDIAID",
+                    SqlDbType.NVarChar, 30);
+
+                AddParameter(
+                    childCmd, "@MediaId", id,
+                    SqlDbType.Int);
+
+                await childCmd.ExecuteNonQueryAsync();
             }
+
+            // Delete parent record
+            using (var parentCmd = new SqlCommand(
+                "SP_ManageMedia", con, (SqlTransaction)transaction))
+            {
+                parentCmd.CommandType = CommandType.StoredProcedure;
+
+                AddParameter(
+                    parentCmd, "@Action", "DELETE",
+                    SqlDbType.NVarChar, 30);
+
+                AddParameter(
+                    parentCmd, "@MediaId", id,
+                    SqlDbType.Int);
+
+                await parentCmd.ExecuteNonQueryAsync();
+            }
+
+            await transaction.CommitAsync();
+
+            return Ok(new
+            {
+                message = "Gallery and all its files deleted successfully.",
+                mediaId = id,
+                deletedFiles = files.Count
+            });
+        }
+        catch
+        {
+            await transaction.RollbackAsync();
+            throw;
         }
     }
 }
