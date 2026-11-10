@@ -1,13 +1,17 @@
-using Microsoft.AspNetCore.Mvc;
+
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.Data.SqlClient;
 using Microsoft.IdentityModel.Tokens;
+
+using System;
 using System.Data;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
 using System.ComponentModel.DataAnnotations;
-using BCrypt.Net;
+
+using WebApplication1.Models;
 
 namespace Practice_Api.Controllers
 {
@@ -26,6 +30,38 @@ namespace Practice_Api.Controllers
             _config.GetConnectionString("DefaultConnection")
             ?? throw new InvalidOperationException(
                 "Database connection string missing.");
+
+        // =====================================
+        // JWT CONFIGURATION HELPERS
+        // =====================================
+
+        private string GetJwtKey()
+        {
+            string key = _config["Jwt:Key"] ?? "";
+
+            if (string.IsNullOrWhiteSpace(key) ||
+                Encoding.UTF8.GetByteCount(key) < 32)
+            {
+                throw new InvalidOperationException(
+                    "JWT Key must contain at least 32 bytes.");
+            }
+
+            return key;
+        }
+
+        private string GetJwtIssuer()
+        {
+            return string.IsNullOrWhiteSpace(_config["Jwt:Issuer"])
+                ? "AirborneAviationApi"
+                : _config["Jwt:Issuer"]!;
+        }
+
+        private string GetJwtAudience()
+        {
+            return string.IsNullOrWhiteSpace(_config["Jwt:Audience"])
+                ? "AirborneAviationClient"
+                : _config["Jwt:Audience"]!;
+        }
 
         // =====================================
         // COMMON JWT CLAIM HELPERS
@@ -93,6 +129,7 @@ namespace Practice_Api.Controllers
             }
 
             int success = Convert.ToInt32(reader["Success"]);
+
             string message =
                 Convert.ToString(reader["Message"]) ?? "";
 
@@ -173,36 +210,25 @@ namespace Practice_Api.Controllers
                 });
             }
 
-            // Same key used by Program.cs
-            string key = _config["Jwt:Key"]
-                ?? throw new InvalidOperationException(
-                    "Jwt:Key is missing.");
-
-            byte[] keyBytes = Encoding.UTF8.GetBytes(key);
-
-            if (keyBytes.Length < 32)
-            {
-                throw new InvalidOperationException(
-                    "JWT key must be at least 32 bytes.");
-            }
-
-            string issuer = _config["Jwt:Issuer"]
-                ?? "AirborneAviationApi";
-
-            string audience = _config["Jwt:Audience"]
-                ?? "AirborneAviationClient";
+            // JWT configuration
+            string key = GetJwtKey();
+            string issuer = GetJwtIssuer();
+            string audience = GetJwtAudience();
 
             int minutes = int.TryParse(
                 _config["Jwt:ExpiryMinutes"],
-                out int m) ? m : 60;
+                out int configuredMinutes) &&
+                configuredMinutes > 0
+                    ? configuredMinutes
+                    : 60;
 
-            DateTime expiresUtc =
-                DateTime.UtcNow.AddMinutes(minutes);
+            DateTime nowUtc = DateTime.UtcNow;
+            DateTime expiresUtc = nowUtc.AddMinutes(minutes);
 
+            // Unique token ID
             string tokenId = Guid.NewGuid().ToString();
 
-            // IMPORTANT:
-            // Claims must match Program.cs validation.
+            // Claims must match Program.cs
             var claims = new[]
             {
                 new Claim(
@@ -219,7 +245,8 @@ namespace Practice_Api.Controllers
             };
 
             var signingKey =
-                new SymmetricSecurityKey(keyBytes);
+                new SymmetricSecurityKey(
+                    Encoding.UTF8.GetBytes(key));
 
             var credentials =
                 new SigningCredentials(
@@ -230,7 +257,7 @@ namespace Practice_Api.Controllers
                 issuer: issuer,
                 audience: audience,
                 claims: claims,
-                notBefore: DateTime.UtcNow,
+                notBefore: nowUtc,
                 expires: expiresUtc,
                 signingCredentials: credentials);
 
@@ -267,7 +294,8 @@ namespace Practice_Api.Controllers
             int userId = GetUserId();
             string loginId = GetLoginId();
 
-            if (userId <= 0 || string.IsNullOrWhiteSpace(loginId))
+            if (userId <= 0 ||
+                string.IsNullOrWhiteSpace(loginId))
             {
                 return Unauthorized(new
                 {
@@ -356,7 +384,8 @@ namespace Practice_Api.Controllers
                 "@PasswordHash", SqlDbType.NVarChar, 255)
                 .Value = newHash;
 
-            object? result = await update.ExecuteScalarAsync();
+            object? result =
+                await update.ExecuteScalarAsync();
 
             int affected = result == null ||
                            result == DBNull.Value
@@ -380,7 +409,103 @@ namespace Practice_Api.Controllers
         }
 
         // =====================================
-        // 4. LOGOUT
+        // 4. UPDATE PROFILE NAME
+        // =====================================
+
+        [Authorize]
+        [HttpPut("profile")]
+        public async Task<IActionResult> UpdateProfile(
+            [FromBody] UpdateProfileRequest request)
+        {
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(new
+                {
+                    success = false,
+                    message = "Please enter a valid name."
+                });
+            }
+
+            int userId = GetUserId();
+
+            if (userId <= 0)
+            {
+                return Unauthorized(new
+                {
+                    success = false,
+                    message = "Invalid or expired login token. Please login again."
+                });
+            }
+
+            string fullName = request.FullName.Trim();
+
+            if (fullName.Length < 2 || fullName.Length > 150)
+            {
+                return BadRequest(new
+                {
+                    success = false,
+                    message = "Name must be between 2 and 150 characters."
+                });
+            }
+
+            try
+            {
+                await using var con =
+                    new SqlConnection(ConnectionString);
+
+                await using var cmd =
+                    new SqlCommand(
+                        "dbo.SP_UpdateUserProfile", con);
+
+                cmd.CommandType = CommandType.StoredProcedure;
+
+                cmd.Parameters.Add(
+                    "@UserId", SqlDbType.Int)
+                    .Value = userId;
+
+                cmd.Parameters.Add(
+                    "@FullName", SqlDbType.NVarChar, 150)
+                    .Value = fullName;
+
+                await con.OpenAsync();
+
+                object? result =
+                    await cmd.ExecuteScalarAsync();
+
+                int updatedRows =
+                    result == null || result == DBNull.Value
+                        ? 0
+                        : Convert.ToInt32(result);
+
+                if (updatedRows != 1)
+                {
+                    return NotFound(new
+                    {
+                        success = false,
+                        message = "User not found or inactive."
+                    });
+                }
+
+                return Ok(new
+                {
+                    success = true,
+                    message = "Profile updated successfully.",
+                    userId,
+                    fullName
+                });
+            }
+            catch (Exception)
+            {
+                return StatusCode(500, new
+                {
+                    success = false,
+                    message = "Profile update failed. Please try again."
+                });
+            }
+        }
+
+        // =====================================
+        // 5. LOGOUT
         // =====================================
 
         [Authorize]
@@ -388,10 +513,12 @@ namespace Practice_Api.Controllers
         public async Task<IActionResult> Logout()
         {
             string? jti =
-                User.FindFirst(JwtRegisteredClaimNames.Jti)?.Value;
+                User.FindFirst(
+                    JwtRegisteredClaimNames.Jti)?.Value;
 
             string? exp =
-                User.FindFirst(JwtRegisteredClaimNames.Exp)?.Value;
+                User.FindFirst(
+                    JwtRegisteredClaimNames.Exp)?.Value;
 
             if (!Guid.TryParse(jti, out Guid tokenId) ||
                 !long.TryParse(exp, out long expiry))
@@ -403,36 +530,61 @@ namespace Practice_Api.Controllers
                 });
             }
 
-            DateTime expiryUtc =
-                DateTimeOffset.FromUnixTimeSeconds(expiry).UtcDateTime;
+            DateTime expiryUtc;
+
+            try
+            {
+                expiryUtc =
+                    DateTimeOffset.FromUnixTimeSeconds(expiry).UtcDateTime;
+            }
+            catch (ArgumentOutOfRangeException)
+            {
+                return BadRequest(new
+                {
+                    success = false,
+                    message = "Invalid token expiry."
+                });
+            }
 
             await using var con =
                 new SqlConnection(ConnectionString);
 
-            await using var cmd = new SqlCommand(
-                @"IF NOT EXISTS
-                  (
-                      SELECT 1
-                      FROM dbo.RevokedAuthTokens
-                      WHERE Jti = @Jti
-                  )
-                  BEGIN
-                      INSERT INTO dbo.RevokedAuthTokens
-                          (Jti, ExpiryUtc)
-                      VALUES
-                          (@Jti, @ExpiryUtc);
-                  END;",
-                con);
+            await using var cmd =
+                new SqlCommand(
+                    @"IF NOT EXISTS
+                    (
+                        SELECT 1
+                        FROM dbo.RevokedTokens
+                        WHERE TokenId = @TokenId
+                    )
+                    BEGIN
+                        INSERT INTO dbo.RevokedTokens
+                        (
+                            TokenId,
+                            ExpiryUtc,
+                            RevokedAtUtc
+                        )
+                        VALUES
+                        (
+                            @TokenId,
+                            @ExpiryUtc,
+                            SYSUTCDATETIME()
+                        );
+                    END;",
+                    con);
 
             cmd.Parameters.Add(
-                "@Jti", SqlDbType.UniqueIdentifier)
+                "@TokenId",
+                SqlDbType.UniqueIdentifier)
                 .Value = tokenId;
 
             cmd.Parameters.Add(
-                "@ExpiryUtc", SqlDbType.DateTime2)
+                "@ExpiryUtc",
+                SqlDbType.DateTime2)
                 .Value = expiryUtc;
 
             await con.OpenAsync();
+
             await cmd.ExecuteNonQueryAsync();
 
             return Ok(new
@@ -443,7 +595,7 @@ namespace Practice_Api.Controllers
         }
 
         // =====================================
-        // 5. DELETE ACCOUNT
+        // 6. DELETE ACCOUNT
         // =====================================
 
         [Authorize]
@@ -454,7 +606,8 @@ namespace Practice_Api.Controllers
             int userId = GetUserId();
             string loginId = GetLoginId();
 
-            if (userId <= 0 || string.IsNullOrWhiteSpace(loginId))
+            if (userId <= 0 ||
+                string.IsNullOrWhiteSpace(loginId))
             {
                 return Unauthorized(new
                 {
@@ -491,6 +644,18 @@ namespace Practice_Api.Controllers
                     });
                 }
 
+                bool isActive =
+                    Convert.ToBoolean(reader["IsActive"]);
+
+                if (!isActive)
+                {
+                    return Unauthorized(new
+                    {
+                        success = false,
+                        message = "Your account is inactive."
+                    });
+                }
+
                 hash =
                     Convert.ToString(reader["PasswordHash"]) ?? "";
             }
@@ -516,22 +681,25 @@ namespace Practice_Api.Controllers
             object? result =
                 await delete.ExecuteScalarAsync();
 
-            int affected = result == null ||
-                           result == DBNull.Value
-                ? 0
-                : Convert.ToInt32(result);
+            int affected =
+                result == null || result == DBNull.Value
+                    ? 0
+                    : Convert.ToInt32(result);
 
-            return affected == 1
-                ? Ok(new
+            if (affected == 1)
+            {
+                return Ok(new
                 {
                     success = true,
                     message = "Account deleted successfully."
-                })
-                : NotFound(new
-                {
-                    success = false,
-                    message = "User not found."
                 });
+            }
+
+            return NotFound(new
+            {
+                success = false,
+                message = "User not found."
+            });
         }
     }
 

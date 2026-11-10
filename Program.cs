@@ -1,5 +1,9 @@
+
+using System;
+using System.Data;
 using System.IdentityModel.Tokens.Jwt;
 using System.Text;
+
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.Data.SqlClient;
 using Microsoft.IdentityModel.Tokens;
@@ -13,24 +17,8 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddControllers();
 
 // =====================================
-// JWT CONFIGURATION
+// DATABASE CONFIGURATION
 // =====================================
-
-// Login aur token validation dono mein Jwt:Key hi use hoga.
-var jwtSecret = builder.Configuration["Jwt:Key"];
-
-if (string.IsNullOrWhiteSpace(jwtSecret) ||
-    Encoding.UTF8.GetByteCount(jwtSecret) < 32)
-{
-    throw new InvalidOperationException(
-        "Jwt:Key appsettings.json mein configure karein. Key minimum 32 bytes ki honi chahiye.");
-}
-
-var jwtIssuer = builder.Configuration["Jwt:Issuer"]
-    ?? "AirborneAviationApi";
-
-var jwtAudience = builder.Configuration["Jwt:Audience"]
-    ?? "AirborneAviationClient";
 
 var connectionString =
     builder.Configuration.GetConnectionString("DefaultConnection");
@@ -38,14 +26,44 @@ var connectionString =
 if (string.IsNullOrWhiteSpace(connectionString))
 {
     throw new InvalidOperationException(
-        "DefaultConnection appsettings.json mein configure nahi hai.");
+        "DefaultConnection is missing.");
 }
 
+// =====================================
+// JWT CONFIGURATION
+// =====================================
+
+var jwtSecret = builder.Configuration["Jwt:Key"];
+
+if (string.IsNullOrWhiteSpace(jwtSecret) ||
+    Encoding.UTF8.GetByteCount(jwtSecret) < 32)
+{
+    throw new InvalidOperationException(
+        "JWT Key must contain at least 32 bytes.");
+}
+
+var jwtIssuer = builder.Configuration["Jwt:Issuer"];
+
+if (string.IsNullOrWhiteSpace(jwtIssuer))
+    jwtIssuer = "AirborneAviationApi";
+
+var jwtAudience = builder.Configuration["Jwt:Audience"];
+
+if (string.IsNullOrWhiteSpace(jwtAudience))
+    jwtAudience = "AirborneAviationClient";
+
+var jwtKey = new SymmetricSecurityKey(
+    Encoding.UTF8.GetBytes(jwtSecret));
+
+// =====================================
+// AUTHENTICATION
+// =====================================
+
 builder.Services
-    .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddAuthentication(
+        JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
-        // JWT claims ko original names (sub, jti, unique_name) mein rakhega.
         options.MapInboundClaims = false;
 
         options.TokenValidationParameters =
@@ -58,11 +76,14 @@ builder.Services
                 ValidAudience = jwtAudience,
 
                 ValidateIssuerSigningKey = true,
-                IssuerSigningKey = new SymmetricSecurityKey(
-                    Encoding.UTF8.GetBytes(jwtSecret)),
+                IssuerSigningKey = jwtKey,
 
                 ValidateLifetime = true,
-                ClockSkew = TimeSpan.FromSeconds(30)
+
+                ClockSkew = TimeSpan.FromSeconds(30),
+
+                RequireExpirationTime = true,
+                RequireSignedTokens = true
             };
 
         options.Events = new JwtBearerEvents
@@ -78,11 +99,11 @@ builder.Services
                     .FindFirst(JwtRegisteredClaimNames.Sub)?.Value;
 
                 if (string.IsNullOrWhiteSpace(jti) ||
-                    !Guid.TryParse(jti, out _) ||
+                    !Guid.TryParse(jti, out Guid tokenId) ||
                     !int.TryParse(userId, out int parsedUserId) ||
                     parsedUserId <= 0)
                 {
-                    context.Fail("JWT token claims are invalid.");
+                    context.Fail("Invalid JWT claims.");
                     return;
                 }
 
@@ -91,23 +112,24 @@ builder.Services
                     await using var connection =
                         new SqlConnection(connectionString);
 
-                    await using var command = new SqlCommand(
-                        @"SELECT CASE
-                            WHEN EXISTS
-                            (
-                                SELECT 1
-                                FROM dbo.RevokedAuthTokens
-                                WHERE Jti = @Jti
-                            )
-                            THEN 1
-                            ELSE 0
-                          END;",
-                        connection);
+                    await using var command =
+                        new SqlCommand(
+                            @"SELECT CASE
+                                WHEN EXISTS
+                                (
+                                    SELECT 1
+                                    FROM dbo.RevokedTokens
+                                    WHERE TokenId = @TokenId
+                                )
+                                THEN 1
+                                ELSE 0
+                            END;",
+                            connection);
 
                     command.Parameters.Add(
-                        "@Jti",
-                        System.Data.SqlDbType.UniqueIdentifier
-                    ).Value = Guid.Parse(jti);
+                        "@TokenId",
+                        SqlDbType.UniqueIdentifier
+                    ).Value = tokenId;
 
                     await connection.OpenAsync(
                         context.HttpContext.RequestAborted);
@@ -120,18 +142,31 @@ builder.Services
 
                     if (isRevoked)
                     {
-                        context.Fail("This token has been revoked.");
+                        context.Fail("Token has been revoked.");
                     }
                 }
-                catch (SqlException)
+                catch (Exception ex)
                 {
-                    // Database validation unavailable means token is rejected.
+                    var logger = context.HttpContext.RequestServices
+                        .GetRequiredService<ILoggerFactory>()
+                        .CreateLogger("JWTValidation");
+
+                    logger.LogError(
+                        ex,
+                        "JWT database validation failed.");
+
+                    // Fail closed: database validation failure
+                    // must not authorize the request.
                     context.Fail(
                         "Token validation service is unavailable.");
                 }
             }
         };
     });
+
+// =====================================
+// AUTHORIZATION
+// =====================================
 
 builder.Services.AddAuthorization();
 
@@ -185,11 +220,13 @@ var app = builder.Build();
 // =====================================
 
 app.UseSwagger();
+
 app.UseSwaggerUI();
 
 app.UseHttpsRedirection();
 
 app.UseDefaultFiles();
+
 app.UseStaticFiles();
 
 app.UseRouting();
@@ -197,6 +234,7 @@ app.UseRouting();
 app.UseCors("AirborneFrontend");
 
 app.UseAuthentication();
+
 app.UseAuthorization();
 
 // =====================================

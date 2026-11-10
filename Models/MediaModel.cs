@@ -123,4 +123,11 @@ namespace WebApplication1.Models
 
         public string CategoryName { get; set; } = string.Empty;
     }
+
+
+     public class MediaStatusRequest
+        {
+            public bool IsActive { get; set; }
+        }
+    
 }

@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using static System.Runtime.InteropServices.JavaScript.JSType;
 
 namespace WebApplication1.Models;
 
@@ -31,3 +32,14 @@ public sealed class DeleteAccountRequest
 {
     [Required, StringLength(128)] public string Password { get; set; } = string.Empty;
 }
+
+//-----------------------Profile Name Update ---------------
+
+
+public class UpdateProfileRequest
+{
+    [Required]
+    [StringLength(150, MinimumLength = 2)]
+    public string FullName { get; set; } = string.Empty;
+}
+

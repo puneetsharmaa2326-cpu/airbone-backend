@@ -15,12 +15,16 @@ public class MediaController : ControllerBase
     private readonly string _connectionString;
     private readonly Cloudinary _cloudinary;
 
-    private const long MaxFileSize = 50 * 1024 * 1024;
+   //rivate const long MaxFileSize = 50 * 1024 * 1024;//50mb
+    private const long MaxFileSize = 1024L * 1024 * 1024; // 1 GB
 
     private static readonly string[] ImageExtensions =
     {
-        ".jpg", ".jpeg", ".png", ".webp", ".gif"
+        ".jpg", ".jpeg", ".png", ".webp", ".gif", ".jfif"
+
     };
+
+
 
     private static readonly string[] VideoExtensions =
     {
@@ -599,6 +603,81 @@ public class MediaController : ControllerBase
             message = "Gallery updated successfully.",
             mediaId = id
         });
+    }
+
+    // =====================================================
+    // UPDATE GALLERY STATUS active/inactive
+    // PATCH: api/Media/1025/status
+    // =====================================================
+
+    [HttpPatch("{id:int}/status")]
+    public async Task<IActionResult> UpdateStatus(
+        int id,
+        [FromBody] MediaStatusRequest request)
+    {
+        if (id <= 0)
+            return BadRequest("Invalid MediaId.");
+
+        if (request == null)
+            return BadRequest("Status is required.");
+
+        try
+        {
+            using var con = GetConnection();
+
+            using var cmd = new SqlCommand(
+                "SP_ManageMedia", con);
+
+            cmd.CommandType = CommandType.StoredProcedure;
+
+            AddParameter(
+                cmd,
+                "@Action",
+                "SETSTATUS",
+                SqlDbType.NVarChar,
+                30);
+
+            AddParameter(
+                cmd,
+                "@MediaId",
+                id,
+                SqlDbType.Int);
+
+            AddParameter(
+                cmd,
+                "@IsActive",
+                request.IsActive,
+                SqlDbType.Bit);
+
+            await con.OpenAsync();
+
+            using var reader = await cmd.ExecuteReaderAsync();
+
+            if (!await reader.ReadAsync())
+                return NotFound("Gallery not found.");
+
+            return Ok(new
+            {
+                success = true,
+                message = request.IsActive
+                    ? "Gallery activated successfully."
+                    : "Gallery deactivated successfully.",
+
+                mediaId = Convert.ToInt32(reader["MediaId"]),
+                mediaName = reader["MediaName"].ToString(),
+                categoryId = Convert.ToInt32(reader["CategoryId"]),
+                categoryName = reader["CategoryName"].ToString(),
+                isActive = Convert.ToBoolean(reader["IsActive"])
+            });
+        }
+        catch (SqlException ex)
+        {
+            return StatusCode(500, new
+            {
+                success = false,
+                message = ex.Message
+            });
+        }
     }
 
     // =====================================================
