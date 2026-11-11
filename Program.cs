@@ -185,57 +185,95 @@ builder.Services.AddSwaggerGen(options =>
 // CORS
 // =====================================
 
+//builder.Services.AddCors(options =>
+//{
+//    options.AddPolicy("AirborneFrontend", policy =>
+//    {
+//        policy
+//            .WithOrigins(
+//                "https://airborne-frontend.netlify.app",
+//                "https://marvelous-bienenstitch-ef5ebc.netlify.app",
+//                "https://airborne-aviation-web.netlify.app",
+
+//                "http://localhost:5500",
+//                "http://127.0.0.1:5500",
+
+//                "http://localhost:5501",
+//                "http://127.0.0.1:5501",
+
+//                "http://localhost:5502",
+//                "http://127.0.0.1:5502"
+//            )
+//            .AllowAnyHeader()
+//            .AllowAnyMethod();
+//    });
+//});
+
+
+
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AirborneFrontend", policy =>
     {
         policy
-            .WithOrigins(
-                "https://airborne-frontend.netlify.app",
-                "https://marvelous-bienenstitch-ef5ebc.netlify.app",
-                "https://airborne-aviation-web.netlify.app",
-
-                "http://localhost:5500",
-                "http://127.0.0.1:5500",
-
-                "http://localhost:5501",
-                "http://127.0.0.1:5501",
-
-                "http://localhost:5502",
-                "http://127.0.0.1:5502"
-            )
+            .AllowAnyOrigin()
             .AllowAnyHeader()
             .AllowAnyMethod();
     });
 });
 
+
+
 // =====================================
 // BUILD APPLICATION
 // =====================================
 
+//var app = builder.Build();
+
+//// =====================================
+//// MIDDLEWARE
+//// =====================================
+
+//app.UseSwagger();
+
+//app.UseSwaggerUI();
+
+//app.UseHttpsRedirection();
+
+//app.UseDefaultFiles();
+
+//app.UseStaticFiles();
+
+//app.UseRouting();
+
+//app.UseCors("AirborneFrontend");
+
+//app.UseAuthentication();
+
+//app.UseAuthorization();
+
+
+
+
 var app = builder.Build();
 
-// =====================================
-// MIDDLEWARE
-// =====================================
-
 app.UseSwagger();
-
 app.UseSwaggerUI();
 
 app.UseHttpsRedirection();
 
-app.UseDefaultFiles();
-
-app.UseStaticFiles();
-
-app.UseRouting();
-
+// CORS - Allow All Origins
 app.UseCors("AirborneFrontend");
 
 app.UseAuthentication();
-
 app.UseAuthorization();
+
+app.MapControllers();
+
+app.Run();
+
+
+
 
 // =====================================
 // API CONTROLLERS
