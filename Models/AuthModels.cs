@@ -41,5 +41,8 @@ public class UpdateProfileRequest
     [Required]
     [StringLength(150, MinimumLength = 2)]
     public string FullName { get; set; } = string.Empty;
+
+    [Required]
+    public string LoginId { get; set; } = string.Empty;
 }
 

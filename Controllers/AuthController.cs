@@ -415,14 +415,14 @@ namespace Practice_Api.Controllers
         [Authorize]
         [HttpPut("profile")]
         public async Task<IActionResult> UpdateProfile(
-            [FromBody] UpdateProfileRequest request)
+      [FromBody] UpdateProfileRequest request)
         {
             if (!ModelState.IsValid)
             {
                 return BadRequest(new
                 {
                     success = false,
-                    message = "Please enter a valid name."
+                    message = "Please enter a valid name and login ID."
                 });
             }
 
@@ -438,6 +438,7 @@ namespace Practice_Api.Controllers
             }
 
             string fullName = request.FullName.Trim();
+            string loginId = request.LoginId.Trim();
 
             if (fullName.Length < 2 || fullName.Length > 150)
             {
@@ -448,34 +449,52 @@ namespace Practice_Api.Controllers
                 });
             }
 
+            if (loginId.Length < 3 || loginId.Length > 100)
+            {
+                return BadRequest(new
+                {
+                    success = false,
+                    message = "Login ID must be between 3 and 100 characters."
+                });
+            }
+
+            if (loginId.Contains(' '))
+            {
+                return BadRequest(new
+                {
+                    success = false,
+                    message = "Login ID cannot contain spaces."
+                });
+            }
+
             try
             {
-                await using var con =
-                    new SqlConnection(ConnectionString);
-
-                await using var cmd =
-                    new SqlCommand(
-                        "dbo.SP_UpdateUserProfile", con);
+                await using var con = new SqlConnection(ConnectionString);
+                await using var cmd = new SqlCommand("dbo.SP_UpdateUserProfile", con);
 
                 cmd.CommandType = CommandType.StoredProcedure;
 
-                cmd.Parameters.Add(
-                    "@UserId", SqlDbType.Int)
-                    .Value = userId;
-
-                cmd.Parameters.Add(
-                    "@FullName", SqlDbType.NVarChar, 150)
-                    .Value = fullName;
+                cmd.Parameters.Add("@UserId", SqlDbType.Int).Value = userId;
+                cmd.Parameters.Add("@FullName", SqlDbType.NVarChar, 150).Value = fullName;
+                cmd.Parameters.Add("@LoginId", SqlDbType.NVarChar, 100).Value = loginId;
 
                 await con.OpenAsync();
 
-                object? result =
-                    await cmd.ExecuteScalarAsync();
+                object? result = await cmd.ExecuteScalarAsync();
 
                 int updatedRows =
                     result == null || result == DBNull.Value
                         ? 0
                         : Convert.ToInt32(result);
+
+                if (updatedRows == -1)
+                {
+                    return Conflict(new
+                    {
+                        success = false,
+                        message = "This Login ID is already taken. Please choose another."
+                    });
+                }
 
                 if (updatedRows != 1)
                 {
@@ -491,7 +510,8 @@ namespace Practice_Api.Controllers
                     success = true,
                     message = "Profile updated successfully.",
                     userId,
-                    fullName
+                    fullName,
+                    loginId
                 });
             }
             catch (Exception)
