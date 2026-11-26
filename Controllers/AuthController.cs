@@ -1,4 +1,3 @@
-
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Data.SqlClient;
@@ -74,10 +73,131 @@ namespace Practice_Api.Controllers
                 out int id) ? id : 0;
         }
 
-        private string GetLoginId()
+        // =====================================
+        // TOKEN GENERATION (Login + UpdateProfile dono use karte hain)
+        // Claims Program.cs se match karte hain: sub, unique_name, jti
+        // =====================================
+
+        private (string Token, DateTime ExpiresUtc) GenerateJwt(
+            int userId, string loginId)
         {
-            return User.FindFirst(
-                JwtRegisteredClaimNames.UniqueName)?.Value ?? "";
+            string key = GetJwtKey();
+            string issuer = GetJwtIssuer();
+            string audience = GetJwtAudience();
+
+            int minutes = int.TryParse(
+                _config["Jwt:ExpiryMinutes"],
+                out int configuredMinutes) &&
+                configuredMinutes > 0
+                    ? configuredMinutes
+                    : 60;
+
+            DateTime nowUtc = DateTime.UtcNow;
+            DateTime expiresUtc = nowUtc.AddMinutes(minutes);
+
+            var claims = new[]
+            {
+                new Claim(
+                    JwtRegisteredClaimNames.Sub,
+                    userId.ToString()),
+
+                new Claim(
+                    JwtRegisteredClaimNames.UniqueName,
+                    loginId),
+
+                new Claim(
+                    JwtRegisteredClaimNames.Jti,
+                    Guid.NewGuid().ToString())
+            };
+
+            var signingKey =
+                new SymmetricSecurityKey(
+                    Encoding.UTF8.GetBytes(key));
+
+            var credentials =
+                new SigningCredentials(
+                    signingKey,
+                    SecurityAlgorithms.HmacSha256);
+
+            var token = new JwtSecurityToken(
+                issuer: issuer,
+                audience: audience,
+                claims: claims,
+                notBefore: nowUtc,
+                expires: expiresUtc,
+                signingCredentials: credentials);
+
+            string tokenString =
+                new JwtSecurityTokenHandler().WriteToken(token);
+
+            return (tokenString, expiresUtc);
+        }
+
+        // =====================================
+        // CURRENT TOKEN REVOKE HELPER (Logout + UpdateProfile)
+        // Connection pehle se open honi chahiye
+        // =====================================
+
+        private async Task<bool> RevokeCurrentTokenAsync(SqlConnection con)
+        {
+            string? jti =
+                User.FindFirst(JwtRegisteredClaimNames.Jti)?.Value;
+
+            string? exp =
+                User.FindFirst(JwtRegisteredClaimNames.Exp)?.Value;
+
+            if (!Guid.TryParse(jti, out Guid tokenId) ||
+                !long.TryParse(exp, out long expiry))
+            {
+                return false;
+            }
+
+            DateTime expiryUtc;
+
+            try
+            {
+                expiryUtc =
+                    DateTimeOffset.FromUnixTimeSeconds(expiry).UtcDateTime;
+            }
+            catch (ArgumentOutOfRangeException)
+            {
+                return false;
+            }
+
+            await using var cmd = new SqlCommand(
+                @"IF NOT EXISTS
+                (
+                    SELECT 1
+                    FROM dbo.RevokedTokens
+                    WHERE TokenId = @TokenId
+                )
+                BEGIN
+                    INSERT INTO dbo.RevokedTokens
+                    (
+                        TokenId,
+                        ExpiryUtc,
+                        RevokedAtUtc
+                    )
+                    VALUES
+                    (
+                        @TokenId,
+                        @ExpiryUtc,
+                        SYSUTCDATETIME()
+                    );
+                END;",
+                con);
+
+            cmd.Parameters.Add(
+                "@TokenId", SqlDbType.UniqueIdentifier)
+                .Value = tokenId;
+
+            cmd.Parameters.Add(
+                "@ExpiryUtc", SqlDbType.DateTime2)
+                .Value = expiryUtc;
+
+            await cmd.ExecuteNonQueryAsync();
+
+            return true;
         }
 
         // =====================================
@@ -210,59 +330,7 @@ namespace Practice_Api.Controllers
                 });
             }
 
-            // JWT configuration
-            string key = GetJwtKey();
-            string issuer = GetJwtIssuer();
-            string audience = GetJwtAudience();
-
-            int minutes = int.TryParse(
-                _config["Jwt:ExpiryMinutes"],
-                out int configuredMinutes) &&
-                configuredMinutes > 0
-                    ? configuredMinutes
-                    : 60;
-
-            DateTime nowUtc = DateTime.UtcNow;
-            DateTime expiresUtc = nowUtc.AddMinutes(minutes);
-
-            // Unique token ID
-            string tokenId = Guid.NewGuid().ToString();
-
-            // Claims must match Program.cs
-            var claims = new[]
-            {
-                new Claim(
-                    JwtRegisteredClaimNames.Sub,
-                    userId.ToString()),
-
-                new Claim(
-                    JwtRegisteredClaimNames.UniqueName,
-                    loginId),
-
-                new Claim(
-                    JwtRegisteredClaimNames.Jti,
-                    tokenId)
-            };
-
-            var signingKey =
-                new SymmetricSecurityKey(
-                    Encoding.UTF8.GetBytes(key));
-
-            var credentials =
-                new SigningCredentials(
-                    signingKey,
-                    SecurityAlgorithms.HmacSha256);
-
-            var token = new JwtSecurityToken(
-                issuer: issuer,
-                audience: audience,
-                claims: claims,
-                notBefore: nowUtc,
-                expires: expiresUtc,
-                signingCredentials: credentials);
-
-            string tokenString =
-                new JwtSecurityTokenHandler().WriteToken(token);
+            var (tokenString, expiresUtc) = GenerateJwt(userId, loginId);
 
             return Ok(new
             {
@@ -280,7 +348,7 @@ namespace Practice_Api.Controllers
         }
 
         // =====================================
-        // 3. CHANGE PASSWORD
+        // 3. CHANGE PASSWORD  (UserId se lookup)
         // =====================================
 
         [Authorize]
@@ -292,10 +360,8 @@ namespace Practice_Api.Controllers
                 return BadRequest(ModelState);
 
             int userId = GetUserId();
-            string loginId = GetLoginId();
 
-            if (userId <= 0 ||
-                string.IsNullOrWhiteSpace(loginId))
+            if (userId <= 0)
             {
                 return Unauthorized(new
                 {
@@ -309,15 +375,15 @@ namespace Practice_Api.Controllers
 
             await con.OpenAsync();
 
-            // Verify old password
+            // Verify old password - UserId se user fetch
             await using var cmd =
-                new SqlCommand("dbo.GetUserForLogin", con);
+                new SqlCommand("dbo.GetUserById", con);
 
             cmd.CommandType = CommandType.StoredProcedure;
 
             cmd.Parameters.Add(
-                "@LoginId", SqlDbType.NVarChar, 100)
-                .Value = loginId;
+                "@UserId", SqlDbType.Int)
+                .Value = userId;
 
             string oldHash;
 
@@ -409,13 +475,14 @@ namespace Practice_Api.Controllers
         }
 
         // =====================================
-        // 4. UPDATE PROFILE NAME
+        // 4. UPDATE PROFILE (Full Name + Login ID)
+        // Naya token return karta hai, purana revoke hota hai
         // =====================================
 
         [Authorize]
         [HttpPut("profile")]
         public async Task<IActionResult> UpdateProfile(
-      [FromBody] UpdateProfileRequest request)
+            [FromBody] UpdateProfileRequest request)
         {
             if (!ModelState.IsValid)
             {
@@ -505,13 +572,21 @@ namespace Practice_Api.Controllers
                     });
                 }
 
+                // Naya token (naye Login ID ke saath)
+                var (newToken, expiresUtc) = GenerateJwt(userId, loginId);
+
+                // Purana token revoke
+                await RevokeCurrentTokenAsync(con);
+
                 return Ok(new
                 {
                     success = true,
                     message = "Profile updated successfully.",
                     userId,
                     fullName,
-                    loginId
+                    loginId,
+                    token = newToken,
+                    expiresUtc
                 });
             }
             catch (Exception)
@@ -532,16 +607,14 @@ namespace Practice_Api.Controllers
         [HttpPost("logout")]
         public async Task<IActionResult> Logout()
         {
-            string? jti =
-                User.FindFirst(
-                    JwtRegisteredClaimNames.Jti)?.Value;
+            await using var con =
+                new SqlConnection(ConnectionString);
 
-            string? exp =
-                User.FindFirst(
-                    JwtRegisteredClaimNames.Exp)?.Value;
+            await con.OpenAsync();
 
-            if (!Guid.TryParse(jti, out Guid tokenId) ||
-                !long.TryParse(exp, out long expiry))
+            bool revoked = await RevokeCurrentTokenAsync(con);
+
+            if (!revoked)
             {
                 return BadRequest(new
                 {
@@ -549,63 +622,6 @@ namespace Practice_Api.Controllers
                     message = "Token claims are invalid."
                 });
             }
-
-            DateTime expiryUtc;
-
-            try
-            {
-                expiryUtc =
-                    DateTimeOffset.FromUnixTimeSeconds(expiry).UtcDateTime;
-            }
-            catch (ArgumentOutOfRangeException)
-            {
-                return BadRequest(new
-                {
-                    success = false,
-                    message = "Invalid token expiry."
-                });
-            }
-
-            await using var con =
-                new SqlConnection(ConnectionString);
-
-            await using var cmd =
-                new SqlCommand(
-                    @"IF NOT EXISTS
-                    (
-                        SELECT 1
-                        FROM dbo.RevokedTokens
-                        WHERE TokenId = @TokenId
-                    )
-                    BEGIN
-                        INSERT INTO dbo.RevokedTokens
-                        (
-                            TokenId,
-                            ExpiryUtc,
-                            RevokedAtUtc
-                        )
-                        VALUES
-                        (
-                            @TokenId,
-                            @ExpiryUtc,
-                            SYSUTCDATETIME()
-                        );
-                    END;",
-                    con);
-
-            cmd.Parameters.Add(
-                "@TokenId",
-                SqlDbType.UniqueIdentifier)
-                .Value = tokenId;
-
-            cmd.Parameters.Add(
-                "@ExpiryUtc",
-                SqlDbType.DateTime2)
-                .Value = expiryUtc;
-
-            await con.OpenAsync();
-
-            await cmd.ExecuteNonQueryAsync();
 
             return Ok(new
             {
@@ -615,7 +631,7 @@ namespace Practice_Api.Controllers
         }
 
         // =====================================
-        // 6. DELETE ACCOUNT
+        // 6. DELETE ACCOUNT  (UserId se lookup)
         // =====================================
 
         [Authorize]
@@ -624,10 +640,8 @@ namespace Practice_Api.Controllers
             [FromBody] DeleteAccountRequest request)
         {
             int userId = GetUserId();
-            string loginId = GetLoginId();
 
-            if (userId <= 0 ||
-                string.IsNullOrWhiteSpace(loginId))
+            if (userId <= 0)
             {
                 return Unauthorized(new
                 {
@@ -642,13 +656,13 @@ namespace Practice_Api.Controllers
             await con.OpenAsync();
 
             await using var cmd =
-                new SqlCommand("dbo.GetUserForLogin", con);
+                new SqlCommand("dbo.GetUserById", con);
 
             cmd.CommandType = CommandType.StoredProcedure;
 
             cmd.Parameters.Add(
-                "@LoginId", SqlDbType.NVarChar, 100)
-                .Value = loginId;
+                "@UserId", SqlDbType.Int)
+                .Value = userId;
 
             string hash;
 
@@ -761,5 +775,17 @@ namespace Practice_Api.Controllers
     {
         [Required]
         public string Password { get; set; } = "";
+    }
+
+    // NOTE: Agar UpdateProfileRequest aapke project mein kisi aur file
+    // (jaise WebApplication1.Models) mein pehle se hai, to wahan ka
+    // purana class hata do ya ye wala hata do. Dono jagah nahi hona chahiye.
+    public class UpdateProfileRequest
+    {
+        [Required]
+        public string FullName { get; set; } = "";
+
+        [Required]
+        public string LoginId { get; set; } = "";
     }
 }
